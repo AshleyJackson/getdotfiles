@@ -82,36 +82,30 @@ async function backupFile(filePath) {
 }
 async function downloadFile(url) {
   const res = await fetch(url);
-  if (!res.ok) {
+  if (!res.ok)
     throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
-  }
   return res.text();
 }
-async function installDotfiles(files, options = {}) {
-  const results = [];
-  for (const file of files) {
-    const dest = join(HOME, file.path);
-    const destDir = dirname(dest);
-    await mkdir(destDir, { recursive: true });
-    const exists = await fileExists(dest);
-    let backupPath = null;
-    if (exists) {
-      if (options.force) {} else {
-        backupPath = await backupFile(dest);
-      }
-    }
-    const content = await downloadFile(file.download_url);
-    await writeFile(dest, content, "utf-8");
-    results.push({
-      status: exists && !options.force ? "backed-up" : "installed",
-      dest,
-      backup: backupPath
-    });
+async function installFile(file, options = {}) {
+  const dest = join(HOME, file.path);
+  await mkdir(dirname(dest), { recursive: true });
+  const exists = await fileExists(dest);
+  let backupPath = null;
+  if (exists && !options.force) {
+    backupPath = await backupFile(dest);
   }
-  return results;
+  const content = await downloadFile(file.download_url);
+  await writeFile(dest, content, "utf-8");
+  return {
+    status: exists && !options.force ? "backed-up" : "installed",
+    dest,
+    backup: backupPath
+  };
 }
 
 // src/main.js
+import { homedir as homedir2 } from "node:os";
+var HOME2 = homedir2();
 var USAGE = `
 Usage:
   npx getdotfiles <username>                Fetch dotfiles from github.com/<username>/dotfiles
@@ -126,13 +120,7 @@ Examples:
   npx getdotfiles ashleyjackson --dry-run
 `;
 function parseArgs(args) {
-  const opts = {
-    username: null,
-    repo: "dotfiles",
-    dryRun: false,
-    force: false,
-    yes: false
-  };
+  const opts = { username: null, repo: "dotfiles", dryRun: false, force: false, yes: false };
   for (let i = 0;i < args.length; i++) {
     switch (args[i]) {
       case "--repo":
@@ -153,9 +141,8 @@ function parseArgs(args) {
         console.log(USAGE);
         process.exit(0);
       default:
-        if (!opts.username) {
+        if (!opts.username)
           opts.username = args[i];
-        }
     }
   }
   return opts;
@@ -163,9 +150,9 @@ function parseArgs(args) {
 async function confirm(msg) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   return new Promise((resolve) => {
-    rl.question(msg, (answer) => {
+    rl.question(msg, (a) => {
       rl.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+      resolve(a.toLowerCase() === "y" || a.toLowerCase() === "yes");
     });
   });
 }
@@ -176,22 +163,19 @@ async function main(argv) {
     process.exit(1);
   }
   try {
-    console.error(`Fetching dotfiles from ${opts.username}/${opts.repo}...`);
     const files = await listDotfilesRepo(opts.username, opts.repo);
     if (files.length === 0) {
       console.error("No dotfiles found in this repo.");
       process.exit(0);
     }
     console.error(`
-Found ${files.length} file(s):
+Found ${files.length} file(s) in ${opts.username}/${opts.repo}:
 `);
-    for (const f of files) {
+    for (const f of files)
       console.error(`  ~/${f.path}`);
-    }
     console.error("");
-    if (opts.dryRun) {
+    if (opts.dryRun)
       process.exit(0);
-    }
     if (!opts.yes) {
       const ok = await confirm("Write these files to ~/? [y/N] ");
       if (!ok) {
@@ -199,15 +183,12 @@ Found ${files.length} file(s):
         process.exit(1);
       }
     }
-    console.error(`Installing ${files.length} file(s) to ~/...
-`);
-    const results = await installDotfiles(files, { force: opts.force });
-    for (const r of results) {
+    for (const file of files) {
+      const r = await installFile(file, { force: opts.force });
       const label = r.status === "backed-up" ? "⚠" : "✓";
-      console.log(`  ${label} ~/${r.dest.replace(process.env.HOME || "~", "~")}`);
-      if (r.backup) {
-        console.log(`       backup: ${r.backup.replace(process.env.HOME || "~", "~")}`);
-      }
+      console.log(`  ${label} ~/${r.dest.replace(HOME2, "~")}`);
+      if (r.backup)
+        console.log(`       backup: ${r.backup.replace(HOME2, "~")}`);
     }
     console.error(`
 Done.`);
