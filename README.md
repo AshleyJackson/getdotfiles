@@ -20,6 +20,9 @@ npx getdotfiles ashleyjackson --dry-run
 
 # Overwrite existing files without backup
 npx getdotfiles ashleyjackson --force
+
+# Skip confirmation prompt
+npx getdotfiles ashleyjackson -y
 ```
 
 ## How it works

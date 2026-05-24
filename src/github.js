@@ -1,14 +1,35 @@
 const GITHUB_API = "https://api.github.com";
 const RAW_CONTENT = "https://raw.githubusercontent.com";
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Get GitHub token: from env var or gh CLI.
+ */
+async function getToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+
+  try {
+    const { stdout } = await execFileAsync("gh", ["auth", "token"]);
+    const token = stdout.trim();
+    if (token) return token;
+  } catch {
+    // gh not installed or not authenticated
+  }
+
+  return null;
+}
+
 /**
  * Fetch repo contents from GitHub API.
  */
-async function fetchContents(owner, repo, path) {
+async function fetchContents(owner, repo, path, token) {
   const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`;
-  const headers = { Accept: "application/vnd.github+json" };
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "getdotfiles/1.0" };
 
-  const token = process.env.GITHUB_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(url, { headers });
@@ -19,7 +40,7 @@ async function fetchContents(owner, repo, path) {
   if (res.status === 403) {
     const msg = token
       ? "Rate limit exceeded. Try again later."
-      : "Rate limit exceeded. Set GITHUB_TOKEN env var for higher limits.";
+      : "Rate limit exceeded. Set GITHUB_TOKEN env var or login with 'gh auth login'.";
     throw new Error(msg);
   }
   if (!res.ok) {
@@ -39,14 +60,13 @@ function isDotfile(name) {
 /**
  * Recursively collect all dotfiles from a repo path.
  */
-async function collectDotfiles(owner, repo, path = "") {
-  const items = await fetchContents(owner, repo, path);
+async function collectDotfiles(owner, repo, path = "", token) {
+  const items = await fetchContents(owner, repo, path, token);
   const files = [];
 
   for (const item of items) {
     if (item.type === "dir") {
-      // Recurse into subdirectories
-      const nested = await collectDotfiles(owner, repo, item.path);
+      const nested = await collectDotfiles(owner, repo, item.path, token);
       files.push(...nested);
     } else if (item.type === "file" && isDotfile(item.name)) {
       files.push({
@@ -65,7 +85,8 @@ async function collectDotfiles(owner, repo, path = "") {
  * Returns array of { path, name, download_url }.
  */
 export async function listDotfilesRepo(owner, repoName = "dotfiles") {
-  return collectDotfiles(owner, repoName);
+  const token = await getToken();
+  return collectDotfiles(owner, repoName, "", token);
 }
 
 /**

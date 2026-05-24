@@ -1,11 +1,27 @@
 #!/usr/bin/env node
 
+// src/main.js
+import { createInterface } from "node:readline";
+
 // src/github.js
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 var GITHUB_API = "https://api.github.com";
-async function fetchContents(owner, repo, path) {
+var execFileAsync = promisify(execFile);
+async function getToken() {
+  if (process.env.GITHUB_TOKEN)
+    return process.env.GITHUB_TOKEN;
+  try {
+    const { stdout } = await execFileAsync("gh", ["auth", "token"]);
+    const token = stdout.trim();
+    if (token)
+      return token;
+  } catch {}
+  return null;
+}
+async function fetchContents(owner, repo, path, token) {
   const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`;
-  const headers = { Accept: "application/vnd.github+json" };
-  const token = process.env.GITHUB_TOKEN;
+  const headers = { Accept: "application/vnd.github+json", "User-Agent": "getdotfiles/1.0" };
   if (token)
     headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, { headers });
@@ -13,7 +29,7 @@ async function fetchContents(owner, repo, path) {
     throw new Error(`Repo "${owner}/${repo}" not found.`);
   }
   if (res.status === 403) {
-    const msg = token ? "Rate limit exceeded. Try again later." : "Rate limit exceeded. Set GITHUB_TOKEN env var for higher limits.";
+    const msg = token ? "Rate limit exceeded. Try again later." : "Rate limit exceeded. Set GITHUB_TOKEN env var or login with 'gh auth login'.";
     throw new Error(msg);
   }
   if (!res.ok) {
@@ -24,12 +40,12 @@ async function fetchContents(owner, repo, path) {
 function isDotfile(name) {
   return name.startsWith(".");
 }
-async function collectDotfiles(owner, repo, path = "") {
-  const items = await fetchContents(owner, repo, path);
+async function collectDotfiles(owner, repo, path = "", token) {
+  const items = await fetchContents(owner, repo, path, token);
   const files = [];
   for (const item of items) {
     if (item.type === "dir") {
-      const nested = await collectDotfiles(owner, repo, item.path);
+      const nested = await collectDotfiles(owner, repo, item.path, token);
       files.push(...nested);
     } else if (item.type === "file" && isDotfile(item.name)) {
       files.push({
@@ -42,7 +58,8 @@ async function collectDotfiles(owner, repo, path = "") {
   return files;
 }
 async function listDotfilesRepo(owner, repoName = "dotfiles") {
-  return collectDotfiles(owner, repoName);
+  const token = await getToken();
+  return collectDotfiles(owner, repoName, "", token);
 }
 
 // src/install.js
@@ -101,6 +118,7 @@ Usage:
   npx getdotfiles <username> --repo <name>  Use a custom repo name
   npx getdotfiles <username> --dry-run      Preview files that would be installed
   npx getdotfiles <username> --force        Overwrite existing files without backup
+  npx getdotfiles <username> -y             Skip confirmation prompt
 
 Examples:
   npx getdotfiles ashleyjackson
@@ -112,7 +130,8 @@ function parseArgs(args) {
     username: null,
     repo: "dotfiles",
     dryRun: false,
-    force: false
+    force: false,
+    yes: false
   };
   for (let i = 0;i < args.length; i++) {
     switch (args[i]) {
@@ -125,6 +144,10 @@ function parseArgs(args) {
       case "--force":
         opts.force = true;
         break;
+      case "-y":
+      case "--yes":
+        opts.yes = true;
+        break;
       case "--help":
       case "-h":
         console.log(USAGE);
@@ -136,6 +159,15 @@ function parseArgs(args) {
     }
   }
   return opts;
+}
+async function confirm(msg) {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  return new Promise((resolve) => {
+    rl.question(msg, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
+    });
+  });
 }
 async function main(argv) {
   const opts = parseArgs(argv);
@@ -150,16 +182,22 @@ async function main(argv) {
       console.error("No dotfiles found in this repo.");
       process.exit(0);
     }
-    if (opts.dryRun) {
-      console.error(`
-Would install ${files.length} file(s) to ~/:
+    console.error(`
+Found ${files.length} file(s):
 `);
-      for (const f of files) {
-        console.log(`  ~/${f.path}`);
-      }
-      console.error(`
-Use --force to overwrite existing files without backup.`);
+    for (const f of files) {
+      console.error(`  ~/${f.path}`);
+    }
+    console.error("");
+    if (opts.dryRun) {
       process.exit(0);
+    }
+    if (!opts.yes) {
+      const ok = await confirm("Write these files to ~/? [y/N] ");
+      if (!ok) {
+        console.error("Aborted.");
+        process.exit(1);
+      }
     }
     console.error(`Installing ${files.length} file(s) to ~/...
 `);

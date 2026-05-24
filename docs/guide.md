@@ -82,11 +82,13 @@ Usage:
   npx getdotfiles <username> --repo <name>  Use a custom repo name
   npx getdotfiles <username> --dry-run      Preview files that would be installed
   npx getdotfiles <username> --force        Overwrite existing files without backup
+  npx getdotfiles <username> -y             Skip confirmation prompt
 
 Options:
   --repo <name>    Repository name (default: "dotfiles")
   --dry-run        Preview only, no filesystem changes
   --force          Overwrite without backup
+  -y, --yes        Skip confirmation prompt
   -h, --help       Show usage
 ```
 
