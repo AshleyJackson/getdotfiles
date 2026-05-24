@@ -1,12 +1,35 @@
 {
-  "name": "npmjs",
-  "module": "index.ts",
+  "name": "getdotfiles",
+  "version": "1.0.0",
+  "description": "Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory",
   "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "bin": {
+    "getdotfiles": "./dist/getdotfiles.js"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build ./bin/getdotfiles.js --target=node --outfile=./dist/getdotfiles.js",
+    "prepublishOnly": "npm run build && npm run check",
+    "prepack": "chmod +x dist/getdotfiles.js",
+    "check": "node --check dist/getdotfiles.js",
+    "test": "node --check dist/getdotfiles.js",
+    "dry-run": "bun run build && node dist/getdotfiles.js",
+    "dev": "node bin/getdotfiles.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AshleyJackson/getdotfiles.git"
+  },
+  "keywords": ["dotfiles", "cli", "github", "dotenv"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   }
 }
