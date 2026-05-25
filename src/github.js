@@ -13,7 +13,7 @@ async function getToken() {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
 
   try {
-    const { stdout } = await execFileAsync("gh", ["auth", "token"]);
+    const { stdout } = await execFileAsync("gh", ["auth", "token"], { shell: true });
     const token = stdout.trim();
     if (token) return token;
   } catch {

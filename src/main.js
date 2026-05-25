@@ -4,6 +4,7 @@ import { installFile } from "./install.js";
 import { homedir } from "node:os";
 
 const HOME = homedir();
+const displayPath = (p) => p.replace(HOME, "~").replace(/\\/g, "/");
 const USAGE = `
 Usage:
   npx getdotfiles <username>                Fetch dotfiles from github.com/<username>/dotfiles
@@ -65,8 +66,8 @@ export async function main(argv) {
     for (const file of files) {
       const r = await installFile(file, { force: opts.force });
       const label = r.status === "backed-up" ? "⚠" : "✓";
-      console.log(`  ${label} ${r.dest.replace(HOME, "~")}`);
-      if (r.backup) console.log(`       backup: ${r.backup.replace(HOME, "~")}`);
+      console.log(`  ${label} ${displayPath(r.dest)}`);
+      if (r.backup) console.log(`       backup: ${displayPath(r.backup)}`);
     }
 
     console.error("\nDone.");

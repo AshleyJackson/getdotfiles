@@ -12,7 +12,7 @@ async function getToken() {
   if (process.env.GITHUB_TOKEN)
     return process.env.GITHUB_TOKEN;
   try {
-    const { stdout } = await execFileAsync("gh", ["auth", "token"]);
+    const { stdout } = await execFileAsync("gh", ["auth", "token"], { shell: true });
     const token = stdout.trim();
     if (token)
       return token;
@@ -106,6 +106,7 @@ async function installFile(file, options = {}) {
 // src/main.js
 import { homedir as homedir2 } from "node:os";
 var HOME2 = homedir2();
+var displayPath = (p) => p.replace(HOME2, "~").replace(/\\/g, "/");
 var USAGE = `
 Usage:
   npx getdotfiles <username>                Fetch dotfiles from github.com/<username>/dotfiles
@@ -187,9 +188,9 @@ Found ${files.length} file(s) in ${opts.username}/${opts.repo}:
     for (const file of files) {
       const r = await installFile(file, { force: opts.force });
       const label = r.status === "backed-up" ? "⚠" : "✓";
-      console.log(`  ${label} ${r.dest.replace(HOME2, "~")}`);
+      console.log(`  ${label} ${displayPath(r.dest)}`);
       if (r.backup)
-        console.log(`       backup: ${r.backup.replace(HOME2, "~")}`);
+        console.log(`       backup: ${displayPath(r.backup)}`);
     }
     console.error(`
 Done.`);

@@ -1,6 +1,6 @@
 {
   "name": "getdotfiles",
-  "version": "0.0.1-pre4",
+  "version": "0.0.1-pre5",
   "description": "Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory",
   "type": "module",
   "bin": {
@@ -14,7 +14,7 @@
   "scripts": {
     "build": "bun build ./bin/getdotfiles.js --target=node --outfile=./dist/getdotfiles.js",
     "prepublishOnly": "npm run build && npm run check",
-    "prepack": "chmod +x dist/getdotfiles.js",
+    "prepack": "node -e \"require('fs').chmodSync('dist/getdotfiles.js', 0o755)\"",
     "check": "node --check dist/getdotfiles.js",
     "test": "node --check dist/getdotfiles.js",
     "dry-run": "bun run build && node dist/getdotfiles.js",
