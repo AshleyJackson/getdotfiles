@@ -57,6 +57,7 @@ export async function main(argv) {
 
     if (!opts.yes) {
       const ok = await confirm("Write these files to ~/? [y/N] ");
+      console.error("");
       if (!ok) { console.error("Aborted."); process.exit(1); }
     }
 
@@ -64,7 +65,7 @@ export async function main(argv) {
     for (const file of files) {
       const r = await installFile(file, { force: opts.force });
       const label = r.status === "backed-up" ? "⚠" : "✓";
-      console.log(`  ${label} ~/${r.dest.replace(HOME, "~")}`);
+      console.log(`  ${label} ${r.dest.replace(HOME, "~")}`);
       if (r.backup) console.log(`       backup: ${r.backup.replace(HOME, "~")}`);
     }
 

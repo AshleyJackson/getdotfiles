@@ -178,6 +178,7 @@ Found ${files.length} file(s) in ${opts.username}/${opts.repo}:
       process.exit(0);
     if (!opts.yes) {
       const ok = await confirm("Write these files to ~/? [y/N] ");
+      console.error("");
       if (!ok) {
         console.error("Aborted.");
         process.exit(1);
@@ -186,7 +187,7 @@ Found ${files.length} file(s) in ${opts.username}/${opts.repo}:
     for (const file of files) {
       const r = await installFile(file, { force: opts.force });
       const label = r.status === "backed-up" ? "⚠" : "✓";
-      console.log(`  ${label} ~/${r.dest.replace(HOME2, "~")}`);
+      console.log(`  ${label} ${r.dest.replace(HOME2, "~")}`);
       if (r.backup)
         console.log(`       backup: ${r.backup.replace(HOME2, "~")}`);
     }
