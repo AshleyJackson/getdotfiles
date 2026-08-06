@@ -2,6 +2,10 @@
 
 Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory.
 
+Works on **macOS**, **Linux**, and **Windows** (Node.js 18+).
+
+Built with TypeScript + Zod; published as a single Node-compatible bundle for `npx`.
+
 ```
 npx getdotfiles <username>
 ```
@@ -25,20 +29,45 @@ npx getdotfiles ashleyjackson --force
 npx getdotfiles ashleyjackson -y
 ```
 
+On Windows (PowerShell or cmd):
+
+```powershell
+npx getdotfiles ashleyjackson
+npx getdotfiles ashleyjackson --dry-run
+$env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson -y
+```
+
 ## How it works
 
 1. Lists root contents of `github.com/<username>/dotfiles` via the GitHub API
 2. Recursively finds all files whose name starts with `.` (dotfiles)
-3. Downloads each file from `raw.githubusercontent.com`
-4. Writes each file to `~/` preserving its repo path
+3. Downloads each file from `raw.githubusercontent.com` (bytes preserved as-is)
+4. Writes each file under your home directory (`~/` / `%USERPROFILE%`), preserving repo path segments
+
+## Platform notes
+
+| Topic | Behavior |
+|-------|----------|
+| Install root | Always the user home directory (`os.homedir()` → `~/` or `%USERPROFILE%`) |
+| Paths | Repo paths use `/`; they are joined with the OS path separator on write |
+| Invalid Windows paths | Best-effort: illegal names (e.g. `CON`, `foo:bar`) are **skipped with a warning**; other files still install |
+| Line endings | Preserved exactly from the repo (no LF↔CRLF conversion) |
+| Auth | `GITHUB_TOKEN`, or the GitHub CLI (`gh auth token`) when available |
+| Non-interactive | Without a TTY, confirmation is not prompted — use `-y` or `--dry-run` |
 
 ## Rate limits
 
 Unauthenticated GitHub API allows 60 requests per hour. Set `GITHUB_TOKEN` env var for 5,000 req/hr:
 
 ```bash
+# macOS / Linux
 GITHUB_TOKEN=ghp_xxx npx getdotfiles ashleyjackson
+
+# Windows PowerShell
+$env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson
 ```
+
+If the [GitHub CLI](https://cli.github.com/) is installed and logged in (`gh auth login`), its token is used automatically when `GITHUB_TOKEN` is unset.
 
 ## Existing files
 
