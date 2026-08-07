@@ -65,7 +65,9 @@ Install root is always `os.homedir()`.
 | API | `GET /repos/{owner}/{repo}/contents/{path}` + `download_url` |
 | Validation | Response parsed with `GitHubContentsResponseSchema` |
 | Auth order | 1) `GITHUB_TOKEN` 2) `gh auth token` |
-| Windows gh | `gh.cmd` → `gh.exe` → `gh` → shell fallback |
+| Windows gh | Prefer `gh.exe` → `gh` → `gh.cmd` **with `shell: true`** (Node CVE-2024-27980: bare `.cmd` spawn → **EINVAL**) |
+| Detect installed | `isGhInstalled`: PATH names → `ghCandidatePaths` (MSI/scoop/choco/brew paths) → `where`/`which`. Windows refreshes PATH first |
+| Interactive login | `ghInteractiveInvocations` / `defaultRunAuthLogin` — stdio inherit; Windows tries `gh.exe`, then `cmd.exe /c gh`, then shell-wrapped `.cmd` |
 | Dotfile filter | `type === 'file'` && `name.startsWith('.')` |
 | DI | `GithubDeps`: `fetch`, `execFile`, `env`, `platform` |
 
@@ -73,12 +75,24 @@ Install root is always `os.homedir()`.
 
 Called from `main()` before listing when useful:
 
-1. Skip if `GITHUB_TOKEN` set or `gh --version` works
-2. Explain rate-limit impact + docs link
-3. Non-TTY → continue without install
-4. TTY → resolve package manager recipe → confirm → run install → optional `gh auth login`
+1. Skip if `GITHUB_TOKEN` set
+2. **Ensure Git first** (`ensureGitAvailable`): detect via PATH + `gitCandidatePaths`; TTY offers install (winget `Git.Git` / brew / apt / …)
+3. **Auto-detect existing gh** (Windows: refresh User+Machine PATH first, then probe PATH + known install dirs). If found → `already-installed`, no prompt
+4. Explain rate-limit impact + docs link when missing
+5. Non-TTY → continue without install
+6. TTY → resolve package manager recipe → confirm → run install → optional `gh auth login`
 
-Recipes: brew (macOS/Linux), winget/scoop/choco (Windows), apt (official GitHub CLI repo), dnf, pacman, zypper.
+Recipes: brew (macOS/Linux), winget/scoop/choco (Windows), apt (official GitHub CLI repo), dnf, pacman, zypper. Git uses the same managers (`Git.Git` on winget).
+
+Windows notes:
+
+- Detect tools via multiple probes (`tool --version`, `.exe`/`.cmd`, `where.exe`, `shell: true`, known `WindowsApps\\winget.exe` paths)
+- Order: winget → scoop → choco → **PowerShell irm MSI** (`windowsIrmRecipe`)
+- irm path always hits `/repos/cli/cli/releases/latest` and matches `gh_.+_windows_<arch>.msi` — **gh version numbers are never hardcoded**
+- MSI only (no per-user zip). When not already admin, msiexec is started with `-Verb RunAs` so Windows shows a **separate UAC prompt**; uses `/qb` while elevating (silent `/qn` without elevation often returns **1603**)
+- If winget is chosen first and fails or is declined, automatically offer the irm MSI fallback
+- After install, `refreshWindowsPath()` reloads User+Machine PATH and adds the MSI install dirs so `gh` resolves in the same session
+- `spawnOptionsForCommand` forces `shell: true` for `.cmd`/`.bat` so install/`gh auth login` never hit **spawn EINVAL** on modern Node
 
 ## Installer (`src/install.ts`)
 

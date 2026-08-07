@@ -14468,6 +14468,9 @@ async function confirm(msg, options = {}) {
 
 // src/gh-install.ts
 import { execFile as execFile2 } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify as promisify2 } from "node:util";
 
 // src/github.ts
@@ -14478,13 +14481,37 @@ var execFileAsync = promisify(execFile);
 function ghTokenInvocations(platform = process.platform) {
   if (platform === "win32") {
     return [
-      { command: "gh.cmd", args: ["auth", "token"], options: { windowsHide: true } },
       { command: "gh.exe", args: ["auth", "token"], options: { windowsHide: true } },
       { command: "gh", args: ["auth", "token"], options: { windowsHide: true } },
+      { command: "gh.cmd", args: ["auth", "token"], options: { shell: true, windowsHide: true } },
       { command: "gh", args: ["auth", "token"], options: { shell: true, windowsHide: true } }
     ];
   }
   return [{ command: "gh", args: ["auth", "token"], options: {} }];
+}
+function ghInteractiveInvocations(platform = process.platform, args = ["auth", "login"]) {
+  if (platform === "win32") {
+    return [
+      { command: "gh.exe", args: [...args], options: { windowsHide: false } },
+      { command: "gh", args: [...args], options: { windowsHide: false } },
+      {
+        command: "cmd.exe",
+        args: ["/d", "/s", "/c", "gh", ...args],
+        options: { windowsHide: false }
+      },
+      {
+        command: "gh.cmd",
+        args: [...args],
+        options: { shell: true, windowsHide: false }
+      },
+      {
+        command: "gh",
+        args: [...args],
+        options: { shell: true, windowsHide: false }
+      }
+    ];
+  }
+  return [{ command: "gh", args: [...args], options: {} }];
 }
 async function getToken(deps = {}) {
   const env = deps.env ?? process.env;
@@ -14578,134 +14605,592 @@ async function listDotfilesRepo(owner, repoName = "dotfiles", deps = {}) {
 
 // src/gh-install.ts
 var execFileAsync2 = promisify2(execFile2);
+function isWindowsBatchShim(command) {
+  return /\.(cmd|bat)$/i.test(command);
+}
+function spawnOptionsForCommand(command, options = {}) {
+  const needsShell = isWindowsBatchShim(command);
+  return {
+    ...options,
+    shell: options.shell || needsShell || false,
+    windowsHide: options.windowsHide
+  };
+}
 async function defaultExecFile2(file2, args, options) {
-  const result = await execFileAsync2(file2, [...args], options);
+  const result = await execFileAsync2(file2, [...args], {
+    ...options,
+    timeout: 15000,
+    windowsHide: options?.windowsHide ?? true
+  });
   return {
     stdout: String(result.stdout),
     stderr: String(result.stderr)
   };
 }
-async function isGhInstalled(deps = {}) {
+function ghCandidatePaths(env = process.env, platform = process.platform) {
+  if (platform === "win32") {
+    const local = env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const pf = env.ProgramFiles || "C:\\Program Files";
+    const pf86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+    const userProfile = env.USERPROFILE || homedir();
+    return [
+      join(pf, "GitHub CLI", "gh.exe"),
+      join(pf86, "GitHub CLI", "gh.exe"),
+      join(userProfile, "scoop", "shims", "gh.exe"),
+      join(userProfile, "scoop", "apps", "gh", "current", "bin", "gh.exe"),
+      join(env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin", "gh.exe"),
+      join(local, "Programs", "GitHub CLI", "gh.exe"),
+      join(local, "Programs", "GitHub CLI", "bin", "gh.exe"),
+      join(local, "Microsoft", "WinGet", "Links", "gh.exe")
+    ];
+  }
+  if (platform === "darwin") {
+    return [
+      "/opt/homebrew/bin/gh",
+      "/usr/local/bin/gh",
+      join(homedir(), ".local", "bin", "gh")
+    ];
+  }
+  return [
+    "/usr/bin/gh",
+    "/usr/local/bin/gh",
+    "/home/linuxbrew/.linuxbrew/bin/gh",
+    join(homedir(), ".local", "bin", "gh"),
+    join(homedir(), "bin", "gh")
+  ];
+}
+function gitCandidatePaths(env = process.env, platform = process.platform) {
+  if (platform === "win32") {
+    const local = env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const pf = env.ProgramFiles || "C:\\Program Files";
+    const pf86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+    const userProfile = env.USERPROFILE || homedir();
+    return [
+      join(pf, "Git", "cmd", "git.exe"),
+      join(pf, "Git", "bin", "git.exe"),
+      join(pf86, "Git", "cmd", "git.exe"),
+      join(pf86, "Git", "bin", "git.exe"),
+      join(userProfile, "scoop", "shims", "git.exe"),
+      join(env.ChocolateyInstall || "C:\\ProgramData\\chocolatey", "bin", "git.exe"),
+      join(local, "Programs", "Git", "cmd", "git.exe"),
+      join(local, "Microsoft", "WinGet", "Links", "git.exe")
+    ];
+  }
+  if (platform === "darwin") {
+    return [
+      "/opt/homebrew/bin/git",
+      "/usr/local/bin/git",
+      "/usr/bin/git",
+      join(homedir(), ".local", "bin", "git")
+    ];
+  }
+  return [
+    "/usr/bin/git",
+    "/usr/local/bin/git",
+    "/home/linuxbrew/.linuxbrew/bin/git",
+    join(homedir(), ".local", "bin", "git"),
+    join(homedir(), "bin", "git")
+  ];
+}
+function looksLikeGhVersion(stdout, stderr = "") {
+  const text = `${stdout}
+${stderr}`.toLowerCase();
+  return text.includes("gh version") || /gh\s+version\s+\d/i.test(text) || stdout.trim().length > 0;
+}
+function looksLikeGitVersion(stdout, stderr = "") {
+  const text = `${stdout}
+${stderr}`.toLowerCase();
+  return text.includes("git version") || /git\s+version\s+\d/i.test(text);
+}
+async function isCliToolInstalled(tool, deps = {}) {
   const run = deps.execFile ?? defaultExecFile2;
   const platform = deps.platform ?? process.platform;
-  for (const { command, options } of ghTokenInvocations(platform)) {
+  const env = deps.env ?? process.env;
+  const absolutePaths = tool === "gh" ? ghCandidatePaths(env, platform) : gitCandidatePaths(env, platform);
+  const matchVersion = tool === "gh" ? looksLikeGhVersion : looksLikeGitVersion;
+  const tryVersion = async (command, options = {}) => {
     try {
-      const { stdout } = await run(command, ["--version"], options);
-      if (stdout.toLowerCase().includes("gh version") || stdout.trim().length > 0) {
+      const opts = spawnOptionsForCommand(command, {
+        windowsHide: true,
+        ...options
+      });
+      const { stdout, stderr } = await run(command, ["--version"], opts);
+      return matchVersion(stdout, stderr) || tool === "gh" && stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  };
+  if (tool === "gh") {
+    for (const { command, options } of ghTokenInvocations(platform)) {
+      if (await tryVersion(command, options))
         return true;
+    }
+  } else if (platform === "win32") {
+    for (const name of ["git.exe", "git", "git.cmd"]) {
+      const shell = isWindowsBatchShim(name);
+      if (await tryVersion(name, { shell, windowsHide: true }))
+        return true;
+      if (!shell && await tryVersion(name, { shell: true, windowsHide: true }))
+        return true;
+    }
+  } else if (await tryVersion("git")) {
+    return true;
+  }
+  for (const abs of absolutePaths) {
+    if (!existsSync(abs))
+      continue;
+    if (await tryVersion(abs, { windowsHide: true }))
+      return true;
+  }
+  if (platform === "win32") {
+    const whereProbes = [
+      { command: "where.exe", args: [tool], options: { windowsHide: true } },
+      { command: "where.exe", args: [`${tool}.exe`], options: { windowsHide: true } },
+      {
+        command: "cmd.exe",
+        args: ["/d", "/s", "/c", `where ${tool}`],
+        options: { windowsHide: true }
       }
+    ];
+    for (const probe of whereProbes) {
+      try {
+        const { stdout } = await run(probe.command, probe.args, probe.options ?? {});
+        const first = stdout.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.toLowerCase().includes("could not") && existsSync(l));
+        if (first && await tryVersion(first, { windowsHide: true }))
+          return true;
+      } catch {}
+    }
+  } else {
+    for (const finder of ["which", "command"]) {
+      try {
+        const args = finder === "which" ? [tool] : ["-v", tool];
+        const { stdout } = await run(finder, args, finder === "command" ? { shell: true } : {});
+        const first = stdout.trim().split(/\r?\n/)[0]?.trim();
+        if (first && existsSync(first) && await tryVersion(first))
+          return true;
+      } catch {}
+    }
+  }
+  return false;
+}
+async function isGhInstalled(deps = {}) {
+  return isCliToolInstalled("gh", deps);
+}
+async function isGitInstalled(deps = {}) {
+  return isCliToolInstalled("git", deps);
+}
+var GIT_INSTALL_DOCS = "https://git-scm.com/downloads";
+function hasGithubToken(env = process.env) {
+  return Boolean(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim());
+}
+async function anyProbeSucceeds(run, probes) {
+  for (const probe of probes) {
+    try {
+      const { stdout, stderr } = await run(probe.command, probe.args, probe.options ?? {});
+      if (stdout.trim() || stderr.trim())
+        return true;
+      return true;
     } catch {}
   }
   return false;
 }
-function hasGithubToken(env = process.env) {
-  return Boolean(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim());
+function wingetCandidatePaths(env = process.env) {
+  const local = env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const winDir = env.WINDIR || env.SystemRoot || "C:\\Windows";
+  return [
+    join(local, "Microsoft", "WindowsApps", "winget.exe"),
+    join(winDir, "System32", "winget.exe")
+  ];
 }
-async function commandExists(run, command, platform) {
-  try {
-    if (platform === "win32") {
-      await run("where.exe", [command], { windowsHide: true });
-      return true;
+function windowsToolProbes(name, versionArgs = ["--version"]) {
+  return [
+    { command: `${name}.exe`, args: versionArgs, options: { windowsHide: true } },
+    { command: name, args: versionArgs, options: { windowsHide: true } },
+    { command: `${name}.cmd`, args: versionArgs, options: { windowsHide: true } },
+    { command: name, args: versionArgs, options: { shell: true, windowsHide: true } },
+    { command: "where.exe", args: [name], options: { windowsHide: true } },
+    { command: "where.exe", args: [name], options: { shell: true, windowsHide: true } },
+    { command: "cmd.exe", args: ["/d", "/s", "/c", `where ${name}`], options: { windowsHide: true } }
+  ];
+}
+async function windowsHasTool(run, name, env, versionArgs) {
+  const probes = windowsToolProbes(name, versionArgs);
+  if (name === "winget") {
+    for (const p of wingetCandidatePaths(env)) {
+      if (existsSync(p)) {
+        probes.unshift({
+          command: p,
+          args: versionArgs ?? ["--version"],
+          options: { windowsHide: true }
+        });
+      }
     }
-    await run("which", [command], {});
-    return true;
-  } catch {
-    return false;
   }
+  return anyProbeSucceeds(run, probes);
+}
+async function unixHasTool(run, name) {
+  return anyProbeSucceeds(run, [
+    { command: "which", args: [name] },
+    { command: "command", args: ["-v", name], options: { shell: true } },
+    { command: name, args: ["--version"] }
+  ]);
+}
+async function refreshWindowsPath(env = process.env, run = defaultExecFile2) {
+  try {
+    const ps = "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + " + "[Environment]::GetEnvironmentVariable('Path','User')";
+    const { stdout } = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], { windowsHide: true });
+    const refreshed = stdout.replace(/\r?\n/g, "").trim();
+    if (refreshed) {
+      env.PATH = refreshed;
+      env.Path = refreshed;
+    }
+  } catch {}
+  const localAppData = env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+  const pf = env.ProgramFiles || "C:\\Program Files";
+  const pf86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const extras = [
+    join(pf, "GitHub CLI"),
+    join(pf86, "GitHub CLI"),
+    join(pf, "Git", "cmd"),
+    join(pf, "Git", "bin"),
+    join(pf86, "Git", "cmd"),
+    join(pf86, "Git", "bin"),
+    join(localAppData, "Microsoft", "WindowsApps")
+  ];
+  const current = env.PATH || env.Path || "";
+  const parts = current.split(";").filter(Boolean);
+  for (const extra of extras) {
+    if (extra && !parts.some((p) => p.toLowerCase() === extra.toLowerCase())) {
+      parts.push(extra);
+    }
+  }
+  env.PATH = parts.join(";");
+  env.Path = env.PATH;
+}
+function windowsGhAssetArch(arch = process.env.PROCESSOR_ARCHITECTURE || "AMD64") {
+  const a = arch.toUpperCase();
+  if (a === "ARM64" || a === "AARCH64")
+    return ["windows_arm64", "windows_amd64", "windows_386"];
+  if (a === "X86" || a === "I386")
+    return ["windows_386", "windows_amd64"];
+  return ["windows_amd64", "windows_arm64", "windows_386"];
+}
+var GH_CLI_LATEST_RELEASE_API = "https://api.github.com/repos/cli/cli/releases/latest";
+function buildWindowsIrmInstallScript(arch = process.env.PROCESSOR_ARCHITECTURE || "AMD64") {
+  const archPatterns = windowsGhAssetArch(arch);
+  const latestApi = GH_CLI_LATEST_RELEASE_API;
+  return `
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$headers = @{ 'User-Agent' = 'getdotfiles'; 'Accept' = 'application/vnd.github+json' }
+
+function Test-IsAdmin {
+  try {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } catch { return $false }
+}
+
+function Find-MsiAsset($assets, $archPatterns) {
+  foreach ($pat in $archPatterns) {
+    $a = $assets | Where-Object { $_.name -match ('^gh_.+_' + [regex]::Escape($pat) + '\\.msi$') } | Select-Object -First 1
+    if ($a) { return $a }
+  }
+  return $assets | Where-Object { $_.name -match '^gh_.+_windows_.+\\.msi$' } | Select-Object -First 1
+}
+
+Write-Host 'Fetching latest GitHub CLI release metadata (version is dynamic)...'
+$rel = Invoke-RestMethod -Uri '${latestApi}' -Headers $headers
+if (-not $rel -or -not $rel.assets) { throw 'Could not read cli/cli latest release from GitHub API' }
+$tag = $rel.tag_name
+Write-Host ("Latest release: " + $tag)
+$archPatterns = @(${archPatterns.map((p) => `'${p}'`).join(", ")})
+
+$msiAsset = Find-MsiAsset $rel.assets $archPatterns
+if (-not $msiAsset) {
+  throw ("No Windows .msi on release " + $tag + " (expected gh_<version>_windows_<arch>.msi)")
+}
+
+$msiPath = Join-Path $env:TEMP $msiAsset.name
+Write-Host ("Downloading " + $msiAsset.browser_download_url)
+Write-Host ("         -> " + $msiPath)
+Invoke-WebRequest -Uri $msiAsset.browser_download_url -OutFile $msiPath -UseBasicParsing
+if (-not (Test-Path -LiteralPath $msiPath)) { throw "Download failed: $msiPath missing" }
+
+$log = Join-Path $env:TEMP ('gh-msi-' + [guid]::NewGuid().ToString('n') + '.log')
+$isAdmin = Test-IsAdmin
+# Quiet when already elevated; basic UI when elevating so the UAC path is clearer
+$ui = if ($isAdmin) { '/qn' } else { '/qb' }
+$msiArgs = @('/i', $msiPath, $ui, '/norestart', '/L*v', $log)
+
+Write-Host ("Installing " + $msiAsset.name + " via msiexec (admin=" + $isAdmin + ")...")
+$p = $null
+if ($isAdmin) {
+  $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru
+} else {
+  # Separate elevated process — Windows shows a UAC prompt for msiexec only
+  Write-Host 'Requesting UAC elevation for msiexec (separate elevated process)...'
+  try {
+    $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
+  } catch {
+    throw ("UAC elevation was cancelled or failed: " + $_.Exception.Message + ". Approve the prompt, or run an elevated terminal and retry.")
+  }
+}
+
+$code = 1603
+if ($null -ne $p -and $null -ne $p.ExitCode) { $code = [int]$p.ExitCode }
+# 0 = success, 3010 = success reboot required
+if ($code -eq 0 -or $code -eq 3010) {
+  Write-Host ('GitHub CLI ' + $tag + ' MSI install finished (exit ' + $code + ').')
+  exit 0
+}
+
+Write-Host ("msiexec failed with exit code " + $code + ".")
+if ($code -eq 1603) {
+  Write-Host 'Exit 1603 is a fatal MSI error — often UAC denied, insufficient privileges, or a conflicting install.'
+}
+if (Test-Path -LiteralPath $log) {
+  Write-Host ("MSI log: " + $log)
+  Get-Content -LiteralPath $log -Tail 40 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+}
+throw ("msiexec failed with exit code " + $code)
+`.trim();
+}
+function windowsIrmRecipe(env = process.env) {
+  const script = buildWindowsIrmInstallScript(env.PROCESSOR_ARCHITECTURE || "AMD64");
+  return {
+    label: "PowerShell (irm latest MSI + UAC)",
+    command: "powershell.exe",
+    args: [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script
+    ],
+    display: "irm .../releases/latest → download gh_<version>_windows_*.msi → msiexec (UAC)",
+    kind: "powershell-irm",
+    optimistic: true
+  };
+}
+function windowsWingetRecipe(env, optimistic, packageId) {
+  const concrete = wingetCandidatePaths(env).find((p) => existsSync(p));
+  const command = concrete ?? "winget";
+  const labelBase = packageId === "Git.Git" ? "Git" : "GitHub CLI";
+  return {
+    label: optimistic ? `winget (Windows Package Manager) · ${labelBase}` : `winget · ${labelBase}`,
+    command,
+    args: [
+      "install",
+      "--id",
+      packageId,
+      "--source",
+      "winget",
+      "-e",
+      "--accept-package-agreements",
+      "--accept-source-agreements",
+      "--disable-interactivity"
+    ],
+    shell: !concrete,
+    display: `winget install --id ${packageId} --source winget`,
+    kind: "winget",
+    optimistic
+  };
+}
+async function resolveGitInstallCommand(platform = process.platform, env = process.env, deps = {}) {
+  const run = deps.execFile ?? defaultExecFile2;
+  if (platform === "darwin") {
+    if (await unixHasTool(run, "brew")) {
+      return {
+        label: "Homebrew · Git",
+        command: "brew",
+        args: ["install", "git"],
+        display: "brew install git",
+        kind: "brew"
+      };
+    }
+    return {
+      label: "Xcode Command Line Tools",
+      command: "xcode-select",
+      args: ["--install"],
+      display: "xcode-select --install  (provides git)",
+      kind: "brew",
+      optimistic: true
+    };
+  }
+  if (platform === "win32") {
+    if (await windowsHasTool(run, "winget", env)) {
+      return windowsWingetRecipe(env, false, "Git.Git");
+    }
+    if (await windowsHasTool(run, "scoop", env)) {
+      return {
+        label: "Scoop · Git",
+        command: "scoop",
+        args: ["install", "git"],
+        display: "scoop install git",
+        shell: true,
+        kind: "scoop"
+      };
+    }
+    if (await windowsHasTool(run, "choco", env)) {
+      return {
+        label: "Chocolatey · Git",
+        command: "choco",
+        args: ["install", "git", "-y"],
+        display: "choco install git -y",
+        shell: true,
+        kind: "choco"
+      };
+    }
+    return windowsWingetRecipe(env, true, "Git.Git");
+  }
+  if (await unixHasTool(run, "brew")) {
+    return {
+      label: "Homebrew · Git",
+      command: "brew",
+      args: ["install", "git"],
+      display: "brew install git",
+      kind: "brew"
+    };
+  }
+  if (await unixHasTool(run, "apt-get")) {
+    return {
+      label: "apt · Git",
+      command: "bash",
+      args: ["-lc", "sudo apt-get update && sudo apt-get install -y git"],
+      display: "sudo apt-get install -y git",
+      kind: "apt"
+    };
+  }
+  if (await unixHasTool(run, "dnf")) {
+    return {
+      label: "dnf · Git",
+      command: "sudo",
+      args: ["dnf", "install", "-y", "git"],
+      display: "sudo dnf install -y git",
+      kind: "dnf"
+    };
+  }
+  if (await unixHasTool(run, "pacman")) {
+    return {
+      label: "pacman · Git",
+      command: "sudo",
+      args: ["pacman", "-S", "--noconfirm", "git"],
+      display: "sudo pacman -S git",
+      kind: "pacman"
+    };
+  }
+  if (await unixHasTool(run, "zypper")) {
+    return {
+      label: "zypper · Git",
+      command: "sudo",
+      args: ["zypper", "--non-interactive", "install", "git"],
+      display: "sudo zypper install git",
+      kind: "zypper"
+    };
+  }
+  return null;
 }
 async function resolveGhInstallCommand(platform = process.platform, env = process.env, deps = {}) {
   const run = deps.execFile ?? defaultExecFile2;
   if (platform === "darwin") {
-    if (await commandExists(run, "brew", platform)) {
+    if (await unixHasTool(run, "brew")) {
       return {
         label: "Homebrew",
         command: "brew",
         args: ["install", "gh"],
-        display: "brew install gh"
+        display: "brew install gh",
+        kind: "brew"
       };
     }
     return null;
   }
   if (platform === "win32") {
-    if (await commandExists(run, "winget", platform)) {
-      return {
-        label: "winget",
-        command: "winget",
-        args: ["install", "--id", "GitHub.cli", "-e", "--accept-package-agreements", "--accept-source-agreements"],
-        display: "winget install --id GitHub.cli -e",
-        shell: true
-      };
+    if (await windowsHasTool(run, "winget", env)) {
+      return windowsWingetRecipe(env, false, "GitHub.cli");
     }
-    if (await commandExists(run, "scoop", platform)) {
+    if (await windowsHasTool(run, "scoop", env)) {
       return {
         label: "Scoop",
         command: "scoop",
         args: ["install", "gh"],
         display: "scoop install gh",
-        shell: true
+        shell: true,
+        kind: "scoop"
       };
     }
-    if (await commandExists(run, "choco", platform)) {
+    if (await windowsHasTool(run, "choco", env)) {
       return {
         label: "Chocolatey",
         command: "choco",
         args: ["install", "gh", "-y"],
         display: "choco install gh -y",
-        shell: true
+        shell: true,
+        kind: "choco"
       };
     }
-    return null;
+    return windowsIrmRecipe(env);
   }
-  if (await commandExists(run, "brew", platform)) {
+  if (await unixHasTool(run, "brew")) {
     return {
       label: "Homebrew",
       command: "brew",
       args: ["install", "gh"],
-      display: "brew install gh"
+      display: "brew install gh",
+      kind: "brew"
     };
   }
-  if (await commandExists(run, "apt-get", platform)) {
+  if (await unixHasTool(run, "apt-get")) {
     const script = "set -e; " + "(command -v wget >/dev/null || (sudo apt-get update && sudo apt-get install -y wget)); " + "sudo mkdir -p -m 755 /etc/apt/keyrings; " + "out=$(mktemp); " + 'wget -qO"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg; ' + 'cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null; ' + "sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg; " + 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null; ' + "sudo apt-get update; " + "sudo apt-get install -y gh";
     return {
       label: "apt (GitHub CLI repo)",
       command: "bash",
       args: ["-lc", script],
-      display: "sudo apt install gh  (via official GitHub CLI apt repository)"
+      display: "sudo apt install gh  (via official GitHub CLI apt repository)",
+      kind: "apt"
     };
   }
-  if (await commandExists(run, "dnf", platform)) {
+  if (await unixHasTool(run, "dnf")) {
     return {
       label: "dnf",
       command: "sudo",
       args: ["dnf", "install", "-y", "gh"],
-      display: "sudo dnf install -y gh"
+      display: "sudo dnf install -y gh",
+      kind: "dnf"
     };
   }
-  if (await commandExists(run, "pacman", platform)) {
+  if (await unixHasTool(run, "pacman")) {
     return {
       label: "pacman",
       command: "sudo",
       args: ["pacman", "-S", "--noconfirm", "github-cli"],
-      display: "sudo pacman -S github-cli"
+      display: "sudo pacman -S github-cli",
+      kind: "pacman"
     };
   }
-  if (await commandExists(run, "zypper", platform)) {
+  if (await unixHasTool(run, "zypper")) {
     return {
       label: "zypper",
       command: "sudo",
       args: ["zypper", "--non-interactive", "install", "gh"],
-      display: "sudo zypper install gh"
+      display: "sudo zypper install gh",
+      kind: "zypper"
     };
   }
   return null;
 }
 async function defaultRunInstall(cmd) {
   const { spawn } = await import("node:child_process");
+  const opts = spawnOptionsForCommand(cmd.command, {
+    shell: cmd.shell ?? false,
+    windowsHide: false
+  });
   return new Promise((resolve) => {
     const child = spawn(cmd.command, cmd.args, {
       stdio: "inherit",
-      shell: cmd.shell ?? false,
-      windowsHide: true,
+      shell: opts.shell,
+      windowsHide: opts.windowsHide,
       env: process.env
     });
     child.on("error", (err) => {
@@ -14716,67 +15201,103 @@ async function defaultRunInstall(cmd) {
     });
   });
 }
-async function defaultRunAuthLogin(deps) {
+async function defaultRunAuthLogin(deps = {}) {
   const { spawn } = await import("node:child_process");
   const platform = deps.platform ?? process.platform;
-  const candidates = ghTokenInvocations(platform);
+  const env = deps.env ?? process.env;
+  const candidates = ghInteractiveInvocations(platform, ["auth", "login"]);
+  const errors3 = [];
   for (const inv of candidates) {
+    const opts = spawnOptionsForCommand(inv.command, {
+      shell: inv.options.shell ?? false,
+      windowsHide: false
+    });
     const result = await new Promise((resolve) => {
-      const child = spawn(inv.command, ["auth", "login"], {
-        stdio: "inherit",
-        shell: inv.options.shell ?? false,
-        windowsHide: inv.options.windowsHide ?? true,
-        env: process.env
+      let settled = false;
+      const done = (value) => {
+        if (settled)
+          return;
+        settled = true;
+        resolve(value);
+      };
+      let child;
+      try {
+        child = spawn(inv.command, inv.args, {
+          stdio: "inherit",
+          shell: opts.shell,
+          windowsHide: false,
+          env
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        done({ ok: false, error: msg, started: false });
+        return;
+      }
+      child.on("error", (err) => {
+        done({ ok: false, error: err.message, started: false });
       });
-      child.on("error", (err) => resolve({ ok: false, error: err.message }));
-      child.on("close", (code) => resolve({ ok: code === 0 }));
+      child.on("close", (code) => {
+        done({ ok: code === 0, started: true });
+      });
     });
     if (result.ok)
-      return result;
-    if (!result.error)
-      return result;
+      return { ok: true };
+    if (result.started)
+      return { ok: false, error: result.error };
+    if (result.error)
+      errors3.push(`${inv.command}: ${result.error}`);
   }
-  return { ok: false, error: "could not start gh auth login" };
+  const detail = errors3.length > 0 ? errors3.join("; ") : "could not start gh auth login";
+  return {
+    ok: false,
+    error: detail.includes("EINVAL") ? `${detail} (Windows: use gh.exe or shell for .cmd; or run: gh auth login)` : detail
+  };
 }
 var GH_INSTALL_DOCS = "https://github.com/cli/cli#installation";
-async function ensureGhAvailable(deps = {}) {
+async function ensureGitAvailable(deps = {}) {
   const env = deps.env ?? process.env;
   const error51 = deps.error ?? console.error;
   const ask = deps.confirm ?? confirm;
   const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
   const platform = deps.platform ?? process.platform;
-  if (deps.skipOffer)
-    return { status: "skipped-non-interactive" };
-  if (hasGithubToken(env))
-    return { status: "token-present" };
-  const installed = await isGhInstalled(deps);
-  if (installed)
+  if (deps.skipGitOffer || deps.skipOffer)
+    return { status: "skipped" };
+  if (platform === "win32") {
+    const refresh = deps.refreshPath ?? refreshWindowsPath;
+    await refresh(env, deps.execFile);
+  }
+  if (await isGitInstalled({ ...deps, env, platform })) {
     return { status: "already-installed" };
+  }
   error51(`
-GitHub CLI (gh) was not found on PATH.`);
-  error51("Without gh or GITHUB_TOKEN, API access is limited to 60 requests/hour.");
-  error51(`Install docs: ${GH_INSTALL_DOCS}`);
-  error51(`Or set GITHUB_TOKEN to a personal access token.
+Git was not found on PATH (or known install locations).`);
+  error51("Git is required before installing/using the GitHub CLI.");
+  error51(`Install docs: ${GIT_INSTALL_DOCS}
 `);
   if (!isTTY) {
-    error51(`Non-interactive session: continuing without gh.
+    error51(`Non-interactive session: continuing without git.
 `);
     return { status: "skipped-non-interactive" };
   }
-  const recipe = deps.resolveInstall?.(platform, env) ?? await resolveGhInstallCommand(platform, env, deps);
+  const recipe = await deps.resolveGitInstall?.(platform, env) ?? await resolveGitInstallCommand(platform, env, deps);
   if (!recipe) {
-    error51("No supported package manager detected for automatic install.");
-    error51("Install gh manually, run `gh auth login`, then retry — or set GITHUB_TOKEN.\n");
+    error51("No supported git install method detected.");
+    error51(`Install git manually from ${GIT_INSTALL_DOCS}, then retry.
+`);
     return { status: "no-recipe" };
   }
-  error51(`Detected install method: ${recipe.label}`);
+  if (recipe.optimistic) {
+    error51(`Install method: ${recipe.label}`);
+  } else {
+    error51(`Detected install method: ${recipe.label}`);
+  }
   error51(`  ${recipe.display}
 `);
-  const wantsInstall = await ask(`Install GitHub CLI (gh) now via ${recipe.label}? [y/N] `, {
+  const wantsInstall = await ask(`Install Git now via ${recipe.label}? [y/N] `, {
     isTTY: true
   });
   if (!wantsInstall) {
-    error51(`Skipping gh install. Continuing unauthenticated (or use GITHUB_TOKEN).
+    error51(`Skipping git install. gh auth login may fail without git.
 `);
     return { status: "skipped-by-user" };
   }
@@ -14788,41 +15309,174 @@ Running: ${recipe.display}
   if (!installResult.ok) {
     const detail = installResult.error ?? (installResult.code != null ? `exit code ${installResult.code}` : "unknown error");
     error51(`
-Failed to install gh (${detail}).`);
-    error51(`See ${GH_INSTALL_DOCS} or set GITHUB_TOKEN.
+Failed to install git (${detail}).`);
+    error51(`See ${GIT_INSTALL_DOCS}
 `);
     return { status: "install-failed", detail };
   }
-  const nowInstalled = await isGhInstalled(deps);
-  if (!nowInstalled) {
-    error51("\ngh install finished, but `gh` is not on PATH in this session.");
-    error51("Open a new terminal (or re-auth your shell), then re-run getdotfiles.");
-    error51(`You can also set GITHUB_TOKEN instead.
+  if (platform === "win32") {
+    const refresh = deps.refreshPath ?? refreshWindowsPath;
+    await refresh(env, deps.execFile);
+  }
+  if (!await isGitInstalled({ ...deps, env, platform })) {
+    error51("\ngit install finished, but `git` is not on PATH in this session.");
+    error51(`Open a new terminal, or install from ${GIT_INSTALL_DOCS}
 `);
-    return { status: "install-failed", detail: "gh not on PATH after install" };
+    return { status: "install-failed", detail: "git not on PATH after install" };
   }
   error51(`
-gh installed successfully.`);
-  let authed = false;
-  const wantsLogin = await ask("Run `gh auth login` now? [y/N] ", { isTTY: true });
-  if (wantsLogin) {
-    const runAuth = deps.runAuthLogin ?? (() => defaultRunAuthLogin(deps));
-    const authResult = await runAuth();
-    authed = authResult.ok;
-    if (!authResult.ok) {
-      error51(`
-gh auth login did not complete${authResult.error ? ` (${authResult.error})` : ""}.`);
-      error51(`You can run it later, or set GITHUB_TOKEN.
+git installed successfully.
 `);
-    } else {
+  return { status: "installed" };
+}
+async function ensureGhAvailable(deps = {}) {
+  const env = deps.env ?? process.env;
+  const error51 = deps.error ?? console.error;
+  const ask = deps.confirm ?? confirm;
+  const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
+  const platform = deps.platform ?? process.platform;
+  if (deps.skipOffer)
+    return { status: "skipped-non-interactive" };
+  if (hasGithubToken(env))
+    return { status: "token-present" };
+  if (platform === "win32") {
+    const refresh = deps.refreshPath ?? refreshWindowsPath;
+    await refresh(env, deps.execFile);
+  }
+  await ensureGitAvailable(deps);
+  let installed = await isGhInstalled({ ...deps, env, platform });
+  if (installed)
+    return { status: "already-installed" };
+  if (platform === "win32") {
+    installed = await isGhInstalled({ ...deps, env, platform });
+    if (installed)
+      return { status: "already-installed" };
+  }
+  error51(`
+GitHub CLI (gh) was not found on PATH (or known install locations).`);
+  error51("Without gh or GITHUB_TOKEN, API access is limited to 60 requests/hour.");
+  error51(`Install docs: ${GH_INSTALL_DOCS}`);
+  error51(`Or set GITHUB_TOKEN to a personal access token.
+`);
+  if (!isTTY) {
+    error51(`Non-interactive session: continuing without gh.
+`);
+    return { status: "skipped-non-interactive" };
+  }
+  const primary = await deps.resolveInstall?.(platform, env) ?? await resolveGhInstallCommand(platform, env, deps);
+  if (!primary) {
+    error51("No supported install method detected.");
+    error51("Install gh manually, run `gh auth login`, then retry — or set GITHUB_TOKEN.\n");
+    return { status: "no-recipe" };
+  }
+  const recipes = [primary];
+  if (platform === "win32" && primary.kind !== "powershell-irm") {
+    recipes.push(windowsIrmRecipe(env));
+  }
+  const runInstall = deps.runInstall ?? defaultRunInstall;
+  let lastFailDetail;
+  for (let i = 0;i < recipes.length; i++) {
+    const recipe = recipes[i];
+    if (!recipe)
+      continue;
+    if (i > 0) {
       error51(`
+Previous method failed${lastFailDetail ? ` (${lastFailDetail})` : ""}.`);
+      error51(`Trying fallback: ${recipe.label}`);
+      error51(`  ${recipe.display}
+`);
+      const wantsFallback = await ask(`Install GitHub CLI (gh) now via ${recipe.label}? [y/N] `, { isTTY: true });
+      if (!wantsFallback) {
+        error51(`Skipping fallback install. Continuing unauthenticated (or use GITHUB_TOKEN).
+`);
+        return { status: "skipped-by-user" };
+      }
+    } else {
+      if (recipe.optimistic) {
+        error51(`Install method: ${recipe.label}`);
+      } else {
+        error51(`Detected install method: ${recipe.label}`);
+      }
+      error51(`  ${recipe.display}
+`);
+      const wantsInstall = await ask(`Install GitHub CLI (gh) now via ${recipe.label}? [y/N] `, { isTTY: true });
+      if (!wantsInstall) {
+        if (recipes.length > 1 && recipes[1]) {
+          const fb = recipes[1];
+          error51(`
+Optional fallback: ${fb.label}`);
+          error51(`  ${fb.display}
+`);
+          const wantsIrm = await ask(`Download latest gh Windows installer with PowerShell (irm) instead? [y/N] `, { isTTY: true });
+          if (!wantsIrm) {
+            error51(`Skipping gh install. Continuing unauthenticated (or use GITHUB_TOKEN).
+`);
+            return { status: "skipped-by-user" };
+          }
+          recipes.splice(0, recipes.length, fb);
+          i = -1;
+          continue;
+        }
+        error51(`Skipping gh install. Continuing unauthenticated (or use GITHUB_TOKEN).
+`);
+        return { status: "skipped-by-user" };
+      }
+    }
+    error51(`
+Running: ${recipe.display}
+`);
+    const installResult = await runInstall(recipe);
+    if (!installResult.ok) {
+      lastFailDetail = installResult.error ?? (installResult.code != null ? `exit code ${installResult.code}` : "unknown error");
+      error51(`
+Failed to install gh (${lastFailDetail}).`);
+      continue;
+    }
+    if (platform === "win32") {
+      const refresh = deps.refreshPath ?? refreshWindowsPath;
+      await refresh(env, deps.execFile);
+    }
+    const nowInstalled = await isGhInstalled({ ...deps, env });
+    if (!nowInstalled) {
+      lastFailDetail = "gh not on PATH after install";
+      error51("\ngh install finished, but `gh` is not on PATH in this session.");
+      continue;
+    }
+    error51(`
+gh installed successfully.`);
+    let authed = false;
+    const wantsLogin = await ask("Run `gh auth login` now? [y/N] ", { isTTY: true });
+    if (wantsLogin) {
+      const runAuth = deps.runAuthLogin ?? (() => defaultRunAuthLogin(deps));
+      const authResult = await runAuth();
+      authed = authResult.ok;
+      if (!authResult.ok) {
+        error51(`
+gh auth login did not complete${authResult.error ? ` (${authResult.error})` : ""}.`);
+        error51(`You can run it later, or set GITHUB_TOKEN.
+`);
+      } else {
+        error51(`
 GitHub CLI authenticated.
 `);
+      }
+    } else {
+      error51("Skipped auth login. Run `gh auth login` later or set GITHUB_TOKEN.\n");
     }
-  } else {
-    error51("Skipped auth login. Run `gh auth login` later or set GITHUB_TOKEN.\n");
+    return { status: "installed", authed };
   }
-  return { status: "installed", authed };
+  if (platform === "win32") {
+    error51("Tips:");
+    error51("  • winget install --id GitHub.cli --source winget");
+    error51("  • Or PowerShell irm latest MSI (approves a separate UAC prompt for msiexec)");
+    error51("  • https://github.com/cli/cli/releases/latest");
+    error51("  • msiexec 1603 usually means UAC was denied or install lacked elevation");
+    error51('  • Install "App Installer" from the Microsoft Store (provides winget)');
+    error51("  • Or set GITHUB_TOKEN and re-run");
+  }
+  error51(`See ${GH_INSTALL_DOCS} or set GITHUB_TOKEN.
+`);
+  return { status: "install-failed", detail: lastFailDetail };
 }
 
 // src/install.ts
@@ -14830,8 +15484,8 @@ import { access, mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 // src/paths.ts
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { homedir as homedir2 } from "node:os";
+import { join as join2 } from "node:path";
 var WIN_INVALID_CHARS = /[<>:"|?*\x00-\x1f]/;
 var WIN_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i;
 function splitRepoPath(repoPath) {
@@ -14904,7 +15558,7 @@ function validateRepoPath(repoPath, platform = process.platform) {
     reason: null
   });
 }
-function resolveHomePath(repoPath, home = homedir(), platform = process.platform) {
+function resolveHomePath(repoPath, home = homedir2(), platform = process.platform) {
   const validated = validateRepoPath(repoPath, platform);
   if (!validated.ok) {
     return ResolveHomeResultSchema.parse({
@@ -14916,10 +15570,10 @@ function resolveHomePath(repoPath, home = homedir(), platform = process.platform
   return ResolveHomeResultSchema.parse({
     ok: true,
     reason: null,
-    dest: join(home, ...validated.segments)
+    dest: join2(home, ...validated.segments)
   });
 }
-function displayPath(filePath, home = homedir(), platform = process.platform) {
+function displayPath(filePath, home = homedir2(), platform = process.platform) {
   if (!filePath)
     return filePath ?? "";
   let result = filePath;

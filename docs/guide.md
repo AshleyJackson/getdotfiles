@@ -99,22 +99,34 @@ $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson
 
 Or log in with the GitHub CLI once (`gh auth login`); getdotfiles will use `gh auth token` automatically.
 
-### Missing GitHub CLI (`gh`)
+### Missing Git / GitHub CLI (`gh`)
 
-If `GITHUB_TOKEN` is unset and `gh` is not on PATH, getdotfiles prints a short explanation and:
+If `GITHUB_TOKEN` is unset, getdotfiles bootstraps tooling in this order:
 
-- **Interactive TTY:** offers to install `gh` using a detected package manager, then optionally runs `gh auth login`
-- **Non-interactive:** continues without installing (rate limits still apply unless you set a token)
+1. **Auto-detect Git** (PATH + known install dirs). If missing on a TTY, offer to install Git first (`gh auth login` needs it).
+2. **Auto-detect `gh`**. If missing on a TTY, offer to install GitHub CLI, then optionally run `gh auth login`.
+3. **Non-interactive:** continues without installing (rate limits still apply unless you set a token).
 
 Supported auto-install backends (first match wins):
 
-| Platform | Package managers tried |
-|----------|------------------------|
-| macOS | Homebrew (`brew install gh`) |
-| Windows | winget → Scoop → Chocolatey |
-| Linux | Homebrew → official apt repo → dnf → pacman → zypper |
+| Platform | Git | GitHub CLI (`gh`) |
+|----------|-----|-------------------|
+| macOS | Homebrew / Xcode CLT | Homebrew (`brew install gh`) |
+| Windows | winget (`Git.Git`) → Scoop → Chocolatey | winget → Scoop → Chocolatey → **PowerShell `irm` latest MSI** |
+| Linux | brew / apt / dnf / pacman / zypper | Homebrew → official apt repo → dnf → pacman → zypper |
 
-Manual install docs: https://github.com/cli/cli#installation
+On Windows:
+
+- Package managers are probed first (`winget`, Scoop, Chocolatey).
+- If none work (or the user declines / install fails), getdotfiles offers a **PowerShell `irm` MSI install** against `https://api.github.com/repos/cli/cli/releases/latest` (**version always dynamic**):
+  1. Download matching `gh_<version>_windows_<arch>.msi`
+  2. Launch **msiexec in a separate elevated process** (`Start-Process -Verb RunAs`) so Windows shows a **UAC prompt** for the install step only
+  3. Use `/qb` when elevating (silent `/qn` without elevation commonly fails with msiexec **1603**)
+- No per-user zip install — system MSI only.
+- After install, PATH is refreshed in-session so `gh` works without opening a new terminal.
+
+Manual install docs: https://github.com/cli/cli#installation  
+Windows precompiled binaries: https://github.com/cli/cli/blob/trunk/docs/install_windows.md
 
 ### Non-interactive / CI
 

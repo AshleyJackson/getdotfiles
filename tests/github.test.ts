@@ -4,6 +4,7 @@ import {
   fetchContents,
   getRawUrl,
   getToken,
+  ghInteractiveInvocations,
   ghTokenInvocations,
   isDotfile,
   listDotfilesRepo,
@@ -36,11 +37,36 @@ describe("ghTokenInvocations", () => {
     expect(list[0]?.options.shell).toBeUndefined();
   });
 
-  test("windows tries cmd/exe then shell fallback", () => {
+  test("windows prefers gh.exe; .cmd only with shell (avoid spawn EINVAL)", () => {
     const list = ghTokenInvocations("win32");
-    expect(list.map((x) => x.command)).toEqual(["gh.cmd", "gh.exe", "gh", "gh"]);
+    expect(list.map((x) => x.command)).toEqual(["gh.exe", "gh", "gh.cmd", "gh"]);
+    // Bare .cmd without shell is banned by Node CVE-2024-27980
+    const cmdShim = list.find((x) => x.command === "gh.cmd");
+    expect(cmdShim?.options.shell).toBe(true);
     expect(list.at(-1)?.options.shell).toBe(true);
     expect(list.every((x) => x.options.windowsHide === true)).toBe(true);
+  });
+});
+
+describe("ghInteractiveInvocations", () => {
+  test("unix uses plain gh auth login", () => {
+    const list = ghInteractiveInvocations("linux");
+    expect(list).toHaveLength(1);
+    expect(list[0]?.command).toBe("gh");
+    expect(list[0]?.args).toEqual(["auth", "login"]);
+  });
+
+  test("windows never spawns bare .cmd without shell", () => {
+    const list = ghInteractiveInvocations("win32", ["auth", "login"]);
+    expect(list[0]?.command).toBe("gh.exe");
+    expect(list.some((x) => x.command === "cmd.exe")).toBe(true);
+    for (const inv of list) {
+      if (/\.cmd$/i.test(inv.command)) {
+        expect(inv.options.shell).toBe(true);
+      }
+      expect(inv.options.windowsHide).toBe(false);
+      expect(inv.args).toContain("auth");
+    }
   });
 });
 
@@ -87,7 +113,8 @@ describe("getToken", () => {
       },
     });
     expect(token).toBe("tok");
-    expect(tried).toEqual(["gh.cmd", "gh.exe"]);
+    expect(tried[0]).toBe("gh.exe");
+    expect(tried).toEqual(["gh.exe"]);
   });
 });
 

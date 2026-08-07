@@ -5,12 +5,29 @@
 
 export { confirm, parseArgs, USAGE, type ConfirmFn } from "./cli.ts";
 export {
+  buildWindowsIrmInstallScript,
+  defaultRunAuthLogin,
   ensureGhAvailable,
+  ensureGitAvailable,
+  GH_CLI_LATEST_RELEASE_API,
   GH_INSTALL_DOCS,
+  GIT_INSTALL_DOCS,
+  ghCandidatePaths,
+  gitCandidatePaths,
   hasGithubToken,
+  isCliToolInstalled,
   isGhInstalled,
+  isGitInstalled,
+  isWindowsBatchShim,
+  refreshWindowsPath,
   resolveGhInstallCommand,
+  resolveGitInstallCommand,
+  spawnOptionsForCommand,
+  windowsGhAssetArch,
+  windowsIrmRecipe,
+  wingetCandidatePaths,
   type EnsureGhResult,
+  type EnsureGitResult,
   type GhInstallCommand,
   type GhInstallDeps,
 } from "./gh-install.ts";
@@ -19,11 +36,13 @@ export {
   fetchContents,
   getRawUrl,
   getToken,
+  ghInteractiveInvocations,
   ghTokenInvocations,
   isDotfile,
   listDotfilesRepo,
   type ExecFileFn,
   type FetchFn,
+  type GhInvocation,
   type GithubDeps,
 } from "./github.ts";
 export { downloadFile, installFile, type InstallDeps } from "./install.ts";

@@ -39,7 +39,7 @@ export type GithubDeps = {
   platform?: Platform;
 };
 
-type GhInvocation = {
+export type GhInvocation = {
   command: string;
   args: string[];
   options: { shell?: boolean; windowsHide?: boolean };
@@ -47,19 +47,57 @@ type GhInvocation = {
 
 /**
  * Candidate ways to invoke the GitHub CLI across platforms.
- * On Windows, prefer gh.cmd / gh.exe without a shell; fall back to shell.
+ *
+ * Windows note (Node ≥18.20.2 / ≥20.12.2, CVE-2024-27980): spawning a `.cmd` /
+ * `.bat` *without* `shell: true` fails with `Error: spawn EINVAL`. Prefer the
+ * real `gh.exe`, and only use `.cmd` via a shell.
  */
 export function ghTokenInvocations(platform: Platform = process.platform): GhInvocation[] {
   if (platform === "win32") {
     return [
-      { command: "gh.cmd", args: ["auth", "token"], options: { windowsHide: true } },
       { command: "gh.exe", args: ["auth", "token"], options: { windowsHide: true } },
       { command: "gh", args: ["auth", "token"], options: { windowsHide: true } },
+      // .cmd batch shim — must use shell:true or Node throws spawn EINVAL
+      { command: "gh.cmd", args: ["auth", "token"], options: { shell: true, windowsHide: true } },
       { command: "gh", args: ["auth", "token"], options: { shell: true, windowsHide: true } },
     ];
   }
 
   return [{ command: "gh", args: ["auth", "token"], options: {} }];
+}
+
+/**
+ * Interactive `gh` invocations (e.g. `gh auth login`) with stdio inherit.
+ * Same Windows shell rules as {@link ghTokenInvocations}.
+ */
+export function ghInteractiveInvocations(
+  platform: Platform = process.platform,
+  args: readonly string[] = ["auth", "login"],
+): GhInvocation[] {
+  if (platform === "win32") {
+    return [
+      { command: "gh.exe", args: [...args], options: { windowsHide: false } },
+      { command: "gh", args: [...args], options: { windowsHide: false } },
+      // cmd.exe /c keeps a real console for the interactive login flow
+      {
+        command: "cmd.exe",
+        args: ["/d", "/s", "/c", "gh", ...args],
+        options: { windowsHide: false },
+      },
+      {
+        command: "gh.cmd",
+        args: [...args],
+        options: { shell: true, windowsHide: false },
+      },
+      {
+        command: "gh",
+        args: [...args],
+        options: { shell: true, windowsHide: false },
+      },
+    ];
+  }
+
+  return [{ command: "gh", args: [...args], options: {} }];
 }
 
 /**

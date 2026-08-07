@@ -59,7 +59,7 @@ You do **not** need Bun, Git, or the GitHub CLI to start. If `gh` is missing, an
 | Invalid Windows paths | Best-effort: illegal names (e.g. `CON`, `foo:bar`) are **skipped with a warning**; other files still install |
 | Line endings | Preserved exactly from the repo (no LF↔CRLF conversion) |
 | Auth | `GITHUB_TOKEN`, or the GitHub CLI (`gh auth token`) when available |
-| Missing `gh` | On a TTY, offers to install GitHub CLI via brew / winget / apt / etc., then optional `gh auth login` |
+| Missing Git / `gh` | On a TTY, installs **Git first** if needed, then offers GitHub CLI (brew / winget / apt / …; Windows also **PowerShell `irm` latest MSI** with UAC — version always dynamic), then optional `gh auth login` |
 | Non-interactive | Without a TTY, no install/write prompts — set `GITHUB_TOKEN`, or install `gh` yourself; use `-y` / `--dry-run` |
 
 ## Rate limits
