@@ -39,6 +39,7 @@ export {
   ghInteractiveInvocations,
   ghTokenInvocations,
   isDotfile,
+  isUnderDotPath,
   listDotfilesRepo,
   type ExecFileFn,
   type FetchFn,

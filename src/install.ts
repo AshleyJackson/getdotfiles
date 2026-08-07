@@ -73,6 +73,8 @@ export async function installFile(
   }
 
   const dest = resolved.dest;
+  // Create every missing parent directory for nested paths
+  // (e.g. ~/.config/nvim/lua/plugins/ for .../plugins/init.lua)
   await mkdir(dirname(dest), { recursive: true });
 
   const exists = await fileExists(dest);

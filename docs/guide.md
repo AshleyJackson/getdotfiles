@@ -15,7 +15,13 @@ The published CLI is a **Node.js 18+** bundle (`#!/usr/bin/env node`). End users
 - **macOS** and **Linux** (bash, zsh, etc.) with Node.js 18+
 - **Windows** (PowerShell, cmd, Git Bash) with Node.js 18+ (`npx` from the official Node installer)
 
-Install target is always the user profile home directory. Nested repo paths (for example `.config/git/config`) are recreated under that home.
+Install target is always the user profile home directory.
+
+Collection pulls **every file** from the repo (not only names starting with `.`):
+
+- Root and nested files alike (`.bashrc`, `README.md`, `Documents/WindowsPowerShell/…`, `.config/nvim/init.lua`, …)
+- All folders are recursed except noise dirs (`.git`, `node_modules`, …)
+- **Every missing parent folder is created** on install under the user home
 
 ### Fresh Windows setup
 

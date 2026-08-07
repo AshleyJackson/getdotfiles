@@ -14564,28 +14564,36 @@ async function fetchContents(owner, repo, path, token, deps = {}) {
   }
   return Array.isArray(parsed.data) ? parsed.data : [parsed.data];
 }
-function isDotfile(name) {
-  return name.startsWith(".");
-}
+var SKIP_DIR_NAMES = new Set([
+  ".git",
+  "node_modules",
+  ".svn",
+  ".hg"
+]);
 async function collectDotfiles(owner, repo, path = "", token = null, deps = {}) {
   const items = await fetchContents(owner, repo, path, token, deps);
   const files = [];
   for (const item of items) {
     if (item.type === "dir") {
-      const nested = await collectDotfiles(owner, repo, item.path, token, deps);
-      files.push(...nested);
-    } else if (item.type === "file" && isDotfile(item.name)) {
-      if (!item.download_url) {
+      if (SKIP_DIR_NAMES.has(item.name.toLowerCase()) || SKIP_DIR_NAMES.has(item.name)) {
         continue;
       }
-      const file2 = DotfileSchema.safeParse({
-        path: item.path,
-        name: item.name,
-        download_url: item.download_url
-      });
-      if (file2.success) {
-        files.push(file2.data);
-      }
+      const child = await collectDotfiles(owner, repo, item.path, token, deps);
+      files.push(...child);
+      continue;
+    }
+    if (item.type !== "file")
+      continue;
+    if (!item.download_url) {
+      continue;
+    }
+    const file2 = DotfileSchema.safeParse({
+      path: item.path,
+      name: item.name,
+      download_url: item.download_url
+    });
+    if (file2.success) {
+      files.push(file2.data);
     }
   }
   return DotfileListSchema.parse(files);

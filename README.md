@@ -46,9 +46,9 @@ You do **not** need Bun, Git, or the GitHub CLI to start. If `gh` is missing, an
 ## How it works
 
 1. Lists root contents of `github.com/<username>/dotfiles` via the GitHub API
-2. Recursively finds all files whose name starts with `.` (dotfiles)
+2. Recursively collects **all files** at any depth (not only names starting with `.`), skipping noise dirs like `.git` / `node_modules`
 3. Downloads each file from `raw.githubusercontent.com` (bytes preserved as-is)
-4. Writes each file under your home directory (`~/` / `%USERPROFILE%`), preserving repo path segments
+4. Writes each file under your home directory (`~/` / `%USERPROFILE%`), creating missing parent folders and preserving repo path segments
 
 ## Platform notes
 

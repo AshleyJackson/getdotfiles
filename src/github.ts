@@ -181,14 +181,38 @@ export async function fetchContents(
 }
 
 /**
- * Check if a filename qualifies as a dotfile.
+ * Check if a filename starts with a dot (legacy helper; collection no longer
+ * filters to these only).
  */
 export function isDotfile(name: string): boolean {
   return name.startsWith(".");
 }
 
 /**
- * Recursively collect all dotfiles from a repo path.
+ * True when any path segment is a dot-segment (`.config`, `.ssh`, …).
+ */
+export function isUnderDotPath(repoPath: string): boolean {
+  return repoPath
+    .split(/[/\\]+/)
+    .filter(Boolean)
+    .some((segment) => segment.startsWith("."));
+}
+
+/** Directories never traversed when collecting installable files. */
+const SKIP_DIR_NAMES = new Set([
+  ".git",
+  "node_modules",
+  ".svn",
+  ".hg",
+]);
+
+/**
+ * Recursively collect **all** installable files from a repo (not only `.*`).
+ *
+ * - Every file at any depth is included when it has a `download_url`
+ * - Every directory is recursed except VCS/vendor noise (`.git`, `node_modules`, …)
+ * - Destination paths stay repo-relative under the user home
+ *   (e.g. `Documents/WindowsPowerShell/profile.ps1` → `~/Documents/...`)
  */
 export async function collectDotfiles(
   owner: string,
@@ -202,21 +226,27 @@ export async function collectDotfiles(
 
   for (const item of items) {
     if (item.type === "dir") {
-      const nested = await collectDotfiles(owner, repo, item.path, token, deps);
-      files.push(...nested);
-    } else if (item.type === "file" && isDotfile(item.name)) {
-      if (!item.download_url) {
-        // Skip files without a downloadable URL (e.g. git-lfs placeholders)
+      if (SKIP_DIR_NAMES.has(item.name.toLowerCase()) || SKIP_DIR_NAMES.has(item.name)) {
         continue;
       }
-      const file = DotfileSchema.safeParse({
-        path: item.path,
-        name: item.name,
-        download_url: item.download_url,
-      });
-      if (file.success) {
-        files.push(file.data);
-      }
+      const child = await collectDotfiles(owner, repo, item.path, token, deps);
+      files.push(...child);
+      continue;
+    }
+
+    if (item.type !== "file") continue;
+    if (!item.download_url) {
+      // Skip files without a downloadable URL (e.g. git-lfs placeholders)
+      continue;
+    }
+
+    const file = DotfileSchema.safeParse({
+      path: item.path,
+      name: item.name,
+      download_url: item.download_url,
+    });
+    if (file.success) {
+      files.push(file.data);
     }
   }
 

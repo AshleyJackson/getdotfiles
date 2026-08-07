@@ -7,6 +7,7 @@ import {
   ghInteractiveInvocations,
   ghTokenInvocations,
   isDotfile,
+  isUnderDotPath,
   listDotfilesRepo,
 } from "../src/github.ts";
 import { githubDir, githubFile, jsonResponse } from "./helpers.ts";
@@ -18,6 +19,16 @@ describe("isDotfile", () => {
     expect(isDotfile("README.md")).toBe(false);
     expect(isDotfile("bashrc")).toBe(false);
     expect(isDotfile("")).toBe(false);
+  });
+});
+
+describe("isUnderDotPath", () => {
+  test("true when any segment is a dot-segment", () => {
+    expect(isUnderDotPath(".config")).toBe(true);
+    expect(isUnderDotPath(".config/nvim/init.lua")).toBe(true);
+    expect(isUnderDotPath("src/.hidden")).toBe(true);
+    expect(isUnderDotPath("src/app.ts")).toBe(false);
+    expect(isUnderDotPath("")).toBe(false);
   });
 });
 
@@ -185,35 +196,119 @@ describe("fetchContents", () => {
 });
 
 describe("collectDotfiles", () => {
-  test("filters to dotfiles and recurses directories", async () => {
+  test("includes all files at any depth (not only root dots)", async () => {
     const fetchImpl = async (input: string | URL | Request): Promise<Response> => {
       const url = String(input);
-      if (url.endsWith("/contents/")) {
+      if (url.endsWith("/contents/") || url.endsWith("/contents")) {
         return jsonResponse([
           githubFile(".bashrc", ".bashrc"),
           githubFile("README.md", "README.md"),
+          githubFile("LICENSE", "LICENSE"),
           githubDir(".config", ".config"),
-          githubDir("src", "src"),
+          githubDir("Documents", "Documents"),
         ]);
       }
       if (url.endsWith("/contents/.config")) {
         return jsonResponse([
           githubDir("nvim", ".config/nvim"),
-          githubFile("keep", ".config/keep"), // not a dotfile leaf
+          githubFile("starship.toml", ".config/starship.toml"),
         ]);
       }
       if (url.endsWith("/contents/.config/nvim")) {
-        return jsonResponse([githubFile("init.lua", ".config/nvim/init.lua")]);
+        return jsonResponse([
+          githubFile("init.lua", ".config/nvim/init.lua"),
+          githubDir("lua", ".config/nvim/lua"),
+        ]);
       }
-      if (url.endsWith("/contents/src")) {
-        return jsonResponse([githubFile(".hidden", "src/.hidden")]);
+      if (url.endsWith("/contents/.config/nvim/lua")) {
+        return jsonResponse([githubFile("plugins.lua", ".config/nvim/lua/plugins.lua")]);
+      }
+      if (url.endsWith("/contents/Documents")) {
+        return jsonResponse([
+          githubDir("WindowsPowerShell", "Documents/WindowsPowerShell"),
+        ]);
+      }
+      if (url.endsWith("/contents/Documents/WindowsPowerShell")) {
+        return jsonResponse([
+          githubFile(
+            "Microsoft.PowerShell_profile.ps1",
+            "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+          ),
+        ]);
       }
       return jsonResponse([], { status: 404, statusText: "Not Found" });
     };
 
     const files = await collectDotfiles("u", "dotfiles", "", null, { fetch: fetchImpl });
     const paths = files.map((f) => f.path).sort();
-    expect(paths).toEqual([".bashrc", "src/.hidden"]);
+    expect(paths).toEqual([
+      ".bashrc",
+      ".config/nvim/init.lua",
+      ".config/nvim/lua/plugins.lua",
+      ".config/starship.toml",
+      "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+      "LICENSE",
+      "README.md",
+    ]);
+  });
+
+  test("matches AshleyJackson/dotfiles-style tree (Documents + root files)", async () => {
+    const fetchImpl = async (input: string | URL | Request): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/contents/") || url.endsWith("/contents")) {
+        return jsonResponse([
+          githubFile(".bashrc", ".bashrc"),
+          githubFile(".gitignore", ".gitignore"),
+          githubFile(".nanorc", ".nanorc"),
+          githubFile(".selected_editor", ".selected_editor"),
+          githubDir("Documents", "Documents"),
+        ]);
+      }
+      if (url.endsWith("/contents/Documents")) {
+        return jsonResponse([githubDir("WindowsPowerShell", "Documents/WindowsPowerShell")]);
+      }
+      if (url.endsWith("/contents/Documents/WindowsPowerShell")) {
+        return jsonResponse([
+          githubFile(
+            "Microsoft.PowerShell_profile.ps1",
+            "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+          ),
+        ]);
+      }
+      return jsonResponse([], { status: 404, statusText: "Not Found" });
+    };
+
+    const files = await collectDotfiles("AshleyJackson", "dotfiles", "", null, {
+      fetch: fetchImpl,
+    });
+    const paths = files.map((f) => f.path).sort();
+    expect(paths).toEqual([
+      ".bashrc",
+      ".gitignore",
+      ".nanorc",
+      ".selected_editor",
+      "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+    ]);
+  });
+
+  test("skips .git and node_modules directories", async () => {
+    const fetchImpl = async (input: string | URL | Request): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/contents/") || url.endsWith("/contents")) {
+        return jsonResponse([
+          githubFile("app.txt", "app.txt"),
+          githubDir(".git", ".git"),
+          githubDir("node_modules", "node_modules"),
+        ]);
+      }
+      if (url.includes("/contents/.git") || url.includes("/contents/node_modules")) {
+        throw new Error("should not recurse skipped dirs");
+      }
+      return jsonResponse([], { status: 404, statusText: "Not Found" });
+    };
+
+    const files = await collectDotfiles("u", "r", "", null, { fetch: fetchImpl });
+    expect(files.map((f) => f.path)).toEqual(["app.txt"]);
   });
 
   test("handles single-file contents response", async () => {

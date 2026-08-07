@@ -69,6 +69,32 @@ describe("installFile", () => {
       expect(result.status).toBe("installed");
       if (result.status !== "installed") throw new Error("expected installed");
       expect(await readFile(result.dest, "utf8")).toContain("name = A");
+      // parents created all the way down
+      expect(await exists(join(home, ".config"))).toBe(true);
+      expect(await exists(join(home, ".config", "git"))).toBe(true);
+    });
+  });
+
+  test("creates deep nested parents for subfolder files", async () => {
+    await withTempDir(async (home) => {
+      const rel = ".config/nvim/lua/plugins/init.lua";
+      const result = await installFile(
+        makeDotfile({
+          path: rel,
+          name: "init.lua",
+          download_url: `https://raw.githubusercontent.com/u/r/main/${rel}`,
+        }),
+        { home, platform: "linux" },
+        { fetch: async () => textResponse("return {}\n") },
+      );
+      expect(result.status).toBe("installed");
+      if (result.status !== "installed") throw new Error("expected installed");
+      expect(result.dest).toBe(join(home, ".config", "nvim", "lua", "plugins", "init.lua"));
+      expect(await exists(join(home, ".config"))).toBe(true);
+      expect(await exists(join(home, ".config", "nvim"))).toBe(true);
+      expect(await exists(join(home, ".config", "nvim", "lua"))).toBe(true);
+      expect(await exists(join(home, ".config", "nvim", "lua", "plugins"))).toBe(true);
+      expect(await readFile(result.dest, "utf8")).toBe("return {}\n");
     });
   });
 
