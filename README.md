@@ -2,7 +2,9 @@
 
 Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory.
 
-Works on **macOS**, **Linux**, and **Windows** (Node.js 18+).
+Works on **macOS**, **Linux**, and **Windows**.
+
+**Requirement:** [Node.js 18+](https://nodejs.org/) only. Bun is **not** required for end users — `npx getdotfiles` runs on Node.
 
 Built with TypeScript + Zod; published as Node-compatible bundles **with declaration files** (`dist/*.d.ts`) for `npx` and programmatic imports.
 
@@ -29,13 +31,17 @@ npx getdotfiles ashleyjackson --force
 npx getdotfiles ashleyjackson -y
 ```
 
-On Windows (PowerShell or cmd):
+On Windows (PowerShell or cmd) — install [Node.js LTS](https://nodejs.org/) first (includes `npx`):
 
 ```powershell
+# Verify Node is available (should print v18+)
+node -v
 npx getdotfiles ashleyjackson
 npx getdotfiles ashleyjackson --dry-run
 $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson -y
 ```
+
+You do **not** need Bun, Git, or the GitHub CLI to start. If `gh` is missing, an interactive run can offer to install it for higher API rate limits.
 
 ## How it works
 

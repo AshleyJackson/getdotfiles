@@ -1,5 +1,4 @@
-#!/usr/bin/env bun
-// @bun
+#!/usr/bin/env node
 import { createRequire } from "node:module";
 var __defProp = Object.defineProperty;
 var __returnValue = (v) => v;

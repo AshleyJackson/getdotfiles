@@ -92,9 +92,12 @@ Recipes: brew (macOS/Linux), winget/scoop/choco (Windows), apt (official GitHub 
 ## Build (`bun run build` → `scripts/build.ts`)
 
 1. **CLI bundle** — `bun build ./bin/getdotfiles.ts --target=node` → `dist/getdotfiles.js` (Zod inlined)
-2. **Library bundle** — `bun build ./src/index.ts --target=node --packages=external` → `dist/index.js` (Zod external)
-3. **Declarations** — `tsc -p tsconfig.build.json` → `dist/*.d.ts` (+ `.d.ts.map`)
-4. **Specifier rewrite** — declaration imports `from "./foo.ts"` → `from "./foo.js"` for consumers
+2. **Node shebang normalize** — force `#!/usr/bin/env node` and strip `// @bun` (bun build otherwise keeps a bun shebang, which breaks Windows/`npx`)
+3. **Library bundle** — `bun build ./src/index.ts --target=node --packages=external` → `dist/index.js` (Zod external)
+4. **Declarations** — `tsc -p tsconfig.build.json` → `dist/*.d.ts` (+ `.d.ts.map`)
+5. **Specifier rewrite** — declaration imports `from "./foo.ts"` → `from "./foo.js"` for consumers
+
+`bun run check` fails the build if the CLI header still mentions bun.
 
 `package.json` points consumers at types:
 

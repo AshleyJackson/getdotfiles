@@ -8,14 +8,22 @@ npx getdotfiles <username>
 
 Fetches all dotfiles from `github.com/<username>/dotfiles` and writes them to your home directory (`~/` on macOS/Linux, `%USERPROFILE%` on Windows).
 
-The published CLI is a Node 18+ bundle. Development uses **TypeScript**, **Bun**, and **Zod** for boundary validation.
+The published CLI is a **Node.js 18+** bundle (`#!/usr/bin/env node`). End users do **not** need Bun. Development uses **TypeScript**, **Bun**, and **Zod**.
 
 ## Supported platforms
 
-- **macOS** and **Linux** (bash, zsh, etc.)
-- **Windows** (PowerShell, cmd, Git Bash) with Node.js 18+
+- **macOS** and **Linux** (bash, zsh, etc.) with Node.js 18+
+- **Windows** (PowerShell, cmd, Git Bash) with Node.js 18+ (`npx` from the official Node installer)
 
 Install target is always the user profile home directory. Nested repo paths (for example `.config/git/config`) are recreated under that home.
+
+### Fresh Windows setup
+
+1. Install [Node.js LTS](https://nodejs.org/) (check “Add to PATH”).
+2. Open a **new** PowerShell or Terminal window.
+3. Run `node -v` (expect `v18` or newer) and `npx getdotfiles <username>`.
+
+If you see `bun is not recognized`, you are on an old package build or a local source entry — the published CLI must run under Node only.
 
 ## Examples
 

@@ -28,8 +28,10 @@
 - CLI entry: `bin/getdotfiles.ts` → `src/main.ts`
 - Public library entry: `src/index.ts` → `dist/index.js` + `dist/index.d.ts`
 - Published binary is the bundled `dist/getdotfiles.js` (Node target) for `npx` users
+- **End users must never need Bun.** `dist/getdotfiles.js` must start with `#!/usr/bin/env node` (build normalizes this — bun build keeps a bun shebang otherwise)
 - Always emit types on build (`tsc -p tsconfig.build.json`); do not ship JS without `.d.ts`
 - `package.json` must keep `types` / `exports["."].types` pointing at `dist/index.d.ts`
+- Keep `engines.node` at `>=18`; do not add a runtime `bun` engine requirement
 
 ## Zod (always)
 

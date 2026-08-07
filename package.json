@@ -1,6 +1,6 @@
 {
   "name": "getdotfiles",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory",
   "type": "module",
   "bin": {
@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "bun run build && bun run check && bun test",
     "prepack": "node -e \"require('fs').chmodSync('dist/getdotfiles.js', 0o755)\"",
-    "check": "node --check dist/getdotfiles.js && node --check dist/index.js && node -e \"for (const f of ['dist/index.d.ts','dist/schemas.d.ts','dist/main.d.ts','dist/gh-install.d.ts']) require('fs').accessSync(f)\"",
+    "check": "node --check dist/getdotfiles.js && node --check dist/index.js && node -e \"const fs=require('fs'); const h=fs.readFileSync('dist/getdotfiles.js','utf8').slice(0,40); if(!h.startsWith('#!/usr/bin/env node\\n')) { console.error('bad shebang', JSON.stringify(h.split('\\n')[0])); process.exit(1);} if(h.includes('bun')) { console.error('bun still in header'); process.exit(1);} for (const f of ['dist/index.d.ts','dist/schemas.d.ts','dist/main.d.ts','dist/gh-install.d.ts']) fs.accessSync(f);\"",
     "test": "bun test",
     "dry-run": "bun run build && node dist/getdotfiles.js",
     "dev": "bun run bin/getdotfiles.ts"

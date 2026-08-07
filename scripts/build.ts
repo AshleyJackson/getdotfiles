@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
 /**
  * Build:
- * 1. Bundle CLI + library entry for Node
- * 2. Emit .d.ts (+ .d.ts.map) via tsc
- * 3. Rewrite `.ts` import specifiers in declarations to `.js` for consumers
+ * 1. Bundle CLI + library entry for Node (npx / Windows must not require Bun)
+ * 2. Normalize CLI shebang to `#!/usr/bin/env node` and strip Bun-only markers
+ * 3. Emit .d.ts (+ .d.ts.map) via tsc
+ * 4. Rewrite `.ts` import specifiers in declarations to `.js` for consumers
  */
+import { chmodSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -65,10 +67,51 @@ async function fixDeclarationImports(): Promise<number> {
   return changed;
 }
 
-async function main(): Promise<void> {
-  // Clean previous type artifacts that may confuse incremental mental model
-  // (bun build overwrites JS; tsc overwrites d.ts)
+/**
+ * bun build preserves the source shebang (`#!/usr/bin/env bun`) even with --target=node.
+ * End users (especially Windows via npm/npx cmd shims) must launch with Node, not Bun.
+ */
+export function normalizeNodeCliBundle(source: string): string {
+  let out = source.replace(/\r\n/g, "\n");
 
+  // Drop any leading shebang lines and Bun bundle markers
+  out = out.replace(/^(?:#!.*\n|\/\/\s*@bun\s*\n)+/, "");
+
+  // Ensure a single Node shebang for Unix npm bin links / Git Bash
+  if (!out.startsWith("#!/usr/bin/env node\n")) {
+    out = `#!/usr/bin/env node\n${out}`;
+  }
+
+  return out;
+}
+
+async function normalizePublishedCli(): Promise<void> {
+  const cliPath = join(dist, "getdotfiles.js");
+  const before = await readFile(cliPath, "utf8");
+  const after = normalizeNodeCliBundle(before);
+  if (after !== before) {
+    await writeFile(cliPath, after, "utf8");
+    console.error("> normalized CLI shebang to node");
+  } else {
+    console.error("> CLI shebang already node");
+  }
+  chmodSync(cliPath, 0o755);
+}
+
+async function assertNodeShebang(): Promise<void> {
+  const cliPath = join(dist, "getdotfiles.js");
+  const head = (await readFile(cliPath, "utf8")).slice(0, 80);
+  if (!head.startsWith("#!/usr/bin/env node\n")) {
+    throw new Error(
+      `dist/getdotfiles.js must start with #!/usr/bin/env node for Windows/npx; got: ${JSON.stringify(head.split("\n")[0])}`,
+    );
+  }
+  if (head.includes("#!/usr/bin/env bun") || head.includes("// @bun")) {
+    throw new Error("dist/getdotfiles.js still references bun in the header");
+  }
+}
+
+async function main(): Promise<void> {
   await run(
     [
       "bun",
@@ -79,6 +122,9 @@ async function main(): Promise<void> {
     ],
     "bundle CLI",
   );
+
+  await normalizePublishedCli();
+  await assertNodeShebang();
 
   await run(
     [
@@ -92,23 +138,17 @@ async function main(): Promise<void> {
     "bundle library entry",
   );
 
-  await run(
-    ["bunx", "tsc", "-p", "tsconfig.build.json"],
-    "emit declarations",
-  );
+  await run(["bunx", "tsc", "-p", "tsconfig.build.json"], "emit declarations");
 
   const fixed = await fixDeclarationImports();
   console.error(`> rewrote import specifiers in ${fixed} declaration file(s)`);
 
-  // Ensure CLI stays executable for pack/publish
-  const cli = join(dist, "getdotfiles.js");
-  const { chmodSync } = await import("node:fs");
-  chmodSync(cli, 0o755);
-
   console.error("build ok");
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
