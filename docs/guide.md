@@ -91,9 +91,26 @@ $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson
 
 Or log in with the GitHub CLI once (`gh auth login`); getdotfiles will use `gh auth token` automatically.
 
+### Missing GitHub CLI (`gh`)
+
+If `GITHUB_TOKEN` is unset and `gh` is not on PATH, getdotfiles prints a short explanation and:
+
+- **Interactive TTY:** offers to install `gh` using a detected package manager, then optionally runs `gh auth login`
+- **Non-interactive:** continues without installing (rate limits still apply unless you set a token)
+
+Supported auto-install backends (first match wins):
+
+| Platform | Package managers tried |
+|----------|------------------------|
+| macOS | Homebrew (`brew install gh`) |
+| Windows | winget → Scoop → Chocolatey |
+| Linux | Homebrew → official apt repo → dnf → pacman → zypper |
+
+Manual install docs: https://github.com/cli/cli#installation
+
 ### Non-interactive / CI
 
-When stdin is not a TTY, the confirmation prompt is not shown. Use `-y` to proceed or `--dry-run` to preview:
+When stdin is not a TTY, confirmation and gh-install prompts are not shown. Prefer setting `GITHUB_TOKEN` in CI. Use `-y` to proceed with writes or `--dry-run` to preview:
 
 ```bash
 npx getdotfiles ashleyjackson -y
@@ -134,6 +151,9 @@ It gets backed up to `{path}.backup.{timestamp}` before the new file is written.
 
 **Q: I hit a rate limit. What now?**
 Generate a token at https://github.com/settings/tokens and set `GITHUB_TOKEN=ghp_xxx`, or run `gh auth login`.
+
+**Q: Do I need the GitHub CLI?**
+No, but it helps. If `gh` is missing, an interactive run offers to install it. You can always use `GITHUB_TOKEN` instead.
 
 **Q: Do I need git installed?**
 No. Uses the GitHub REST API and `raw.githubusercontent.com`.

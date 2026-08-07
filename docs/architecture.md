@@ -69,6 +69,17 @@ Install root is always `os.homedir()`.
 | Dotfile filter | `type === 'file'` && `name.startsWith('.')` |
 | DI | `GithubDeps`: `fetch`, `execFile`, `env`, `platform` |
 
+## GitHub CLI bootstrap (`src/gh-install.ts`)
+
+Called from `main()` before listing when useful:
+
+1. Skip if `GITHUB_TOKEN` set or `gh --version` works
+2. Explain rate-limit impact + docs link
+3. Non-TTY → continue without install
+4. TTY → resolve package manager recipe → confirm → run install → optional `gh auth login`
+
+Recipes: brew (macOS/Linux), winget/scoop/choco (Windows), apt (official GitHub CLI repo), dnf, pacman, zypper.
+
 ## Installer (`src/install.ts`)
 
 1. Zod-parse `Dotfile` + `InstallOptions`
@@ -78,13 +89,29 @@ Install root is always `os.homedir()`.
 5. Download **bytes** (`arrayBuffer` → `Buffer`) — no LF/CRLF conversion
 6. Write file; return Zod-validated `InstallResult`
 
-## Bundle (`bun build`)
+## Build (`bun run build` → `scripts/build.ts`)
 
-```bash
-bun build ./bin/getdotfiles.ts --target=node --outfile=./dist/getdotfiles.js
+1. **CLI bundle** — `bun build ./bin/getdotfiles.ts --target=node` → `dist/getdotfiles.js` (Zod inlined)
+2. **Library bundle** — `bun build ./src/index.ts --target=node --packages=external` → `dist/index.js` (Zod external)
+3. **Declarations** — `tsc -p tsconfig.build.json` → `dist/*.d.ts` (+ `.d.ts.map`)
+4. **Specifier rewrite** — declaration imports `from "./foo.ts"` → `from "./foo.js"` for consumers
+
+`package.json` points consumers at types:
+
+```json
+{
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
+}
 ```
 
-Produces a Node 18+ CLI for `npx`. `prepack` sets the executable bit portably.
+`prepack` sets the CLI executable bit portably.
 
 ## Data flow
 

@@ -6,17 +6,27 @@
   "bin": {
     "getdotfiles": "./dist/getdotfiles.js"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./bin/getdotfiles.ts --target=node --outfile=./dist/getdotfiles.js",
-    "typecheck": "tsc --noEmit",
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepublishOnly": "bun run build && bun run check && bun test",
     "prepack": "node -e \"require('fs').chmodSync('dist/getdotfiles.js', 0o755)\"",
-    "check": "node --check dist/getdotfiles.js",
+    "check": "node --check dist/getdotfiles.js && node --check dist/index.js && node -e \"for (const f of ['dist/index.d.ts','dist/schemas.d.ts','dist/main.d.ts','dist/gh-install.d.ts']) require('fs').accessSync(f)\"",
     "test": "bun test",
     "dry-run": "bun run build && node dist/getdotfiles.js",
     "dev": "bun run bin/getdotfiles.ts"

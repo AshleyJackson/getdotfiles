@@ -14467,6 +14467,10 @@ async function confirm(msg, options = {}) {
   });
 }
 
+// src/gh-install.ts
+import { execFile as execFile2 } from "node:child_process";
+import { promisify as promisify2 } from "node:util";
+
 // src/github.ts
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -14571,6 +14575,255 @@ async function listDotfilesRepo(owner, repoName = "dotfiles", deps = {}) {
   }
   const token = await getToken(deps);
   return collectDotfiles(ownerParsed.data, repoParsed.data, "", token, deps);
+}
+
+// src/gh-install.ts
+var execFileAsync2 = promisify2(execFile2);
+async function defaultExecFile2(file2, args, options) {
+  const result = await execFileAsync2(file2, [...args], options);
+  return {
+    stdout: String(result.stdout),
+    stderr: String(result.stderr)
+  };
+}
+async function isGhInstalled(deps = {}) {
+  const run = deps.execFile ?? defaultExecFile2;
+  const platform = deps.platform ?? process.platform;
+  for (const { command, options } of ghTokenInvocations(platform)) {
+    try {
+      const { stdout } = await run(command, ["--version"], options);
+      if (stdout.toLowerCase().includes("gh version") || stdout.trim().length > 0) {
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
+function hasGithubToken(env = process.env) {
+  return Boolean(env.GITHUB_TOKEN && env.GITHUB_TOKEN.trim());
+}
+async function commandExists(run, command, platform) {
+  try {
+    if (platform === "win32") {
+      await run("where.exe", [command], { windowsHide: true });
+      return true;
+    }
+    await run("which", [command], {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function resolveGhInstallCommand(platform = process.platform, env = process.env, deps = {}) {
+  const run = deps.execFile ?? defaultExecFile2;
+  if (platform === "darwin") {
+    if (await commandExists(run, "brew", platform)) {
+      return {
+        label: "Homebrew",
+        command: "brew",
+        args: ["install", "gh"],
+        display: "brew install gh"
+      };
+    }
+    return null;
+  }
+  if (platform === "win32") {
+    if (await commandExists(run, "winget", platform)) {
+      return {
+        label: "winget",
+        command: "winget",
+        args: ["install", "--id", "GitHub.cli", "-e", "--accept-package-agreements", "--accept-source-agreements"],
+        display: "winget install --id GitHub.cli -e",
+        shell: true
+      };
+    }
+    if (await commandExists(run, "scoop", platform)) {
+      return {
+        label: "Scoop",
+        command: "scoop",
+        args: ["install", "gh"],
+        display: "scoop install gh",
+        shell: true
+      };
+    }
+    if (await commandExists(run, "choco", platform)) {
+      return {
+        label: "Chocolatey",
+        command: "choco",
+        args: ["install", "gh", "-y"],
+        display: "choco install gh -y",
+        shell: true
+      };
+    }
+    return null;
+  }
+  if (await commandExists(run, "brew", platform)) {
+    return {
+      label: "Homebrew",
+      command: "brew",
+      args: ["install", "gh"],
+      display: "brew install gh"
+    };
+  }
+  if (await commandExists(run, "apt-get", platform)) {
+    const script = "set -e; " + "(command -v wget >/dev/null || (sudo apt-get update && sudo apt-get install -y wget)); " + "sudo mkdir -p -m 755 /etc/apt/keyrings; " + "out=$(mktemp); " + 'wget -qO"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg; ' + 'cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null; ' + "sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg; " + 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null; ' + "sudo apt-get update; " + "sudo apt-get install -y gh";
+    return {
+      label: "apt (GitHub CLI repo)",
+      command: "bash",
+      args: ["-lc", script],
+      display: "sudo apt install gh  (via official GitHub CLI apt repository)"
+    };
+  }
+  if (await commandExists(run, "dnf", platform)) {
+    return {
+      label: "dnf",
+      command: "sudo",
+      args: ["dnf", "install", "-y", "gh"],
+      display: "sudo dnf install -y gh"
+    };
+  }
+  if (await commandExists(run, "pacman", platform)) {
+    return {
+      label: "pacman",
+      command: "sudo",
+      args: ["pacman", "-S", "--noconfirm", "github-cli"],
+      display: "sudo pacman -S github-cli"
+    };
+  }
+  if (await commandExists(run, "zypper", platform)) {
+    return {
+      label: "zypper",
+      command: "sudo",
+      args: ["zypper", "--non-interactive", "install", "gh"],
+      display: "sudo zypper install gh"
+    };
+  }
+  return null;
+}
+async function defaultRunInstall(cmd) {
+  const { spawn } = await import("node:child_process");
+  return new Promise((resolve) => {
+    const child = spawn(cmd.command, cmd.args, {
+      stdio: "inherit",
+      shell: cmd.shell ?? false,
+      windowsHide: true,
+      env: process.env
+    });
+    child.on("error", (err) => {
+      resolve({ ok: false, code: null, error: err.message });
+    });
+    child.on("close", (code) => {
+      resolve({ ok: code === 0, code });
+    });
+  });
+}
+async function defaultRunAuthLogin(deps) {
+  const { spawn } = await import("node:child_process");
+  const platform = deps.platform ?? process.platform;
+  const candidates = ghTokenInvocations(platform);
+  for (const inv of candidates) {
+    const result = await new Promise((resolve) => {
+      const child = spawn(inv.command, ["auth", "login"], {
+        stdio: "inherit",
+        shell: inv.options.shell ?? false,
+        windowsHide: inv.options.windowsHide ?? true,
+        env: process.env
+      });
+      child.on("error", (err) => resolve({ ok: false, error: err.message }));
+      child.on("close", (code) => resolve({ ok: code === 0 }));
+    });
+    if (result.ok)
+      return result;
+    if (!result.error)
+      return result;
+  }
+  return { ok: false, error: "could not start gh auth login" };
+}
+var GH_INSTALL_DOCS = "https://github.com/cli/cli#installation";
+async function ensureGhAvailable(deps = {}) {
+  const env = deps.env ?? process.env;
+  const error51 = deps.error ?? console.error;
+  const ask = deps.confirm ?? confirm;
+  const isTTY = deps.isTTY ?? Boolean(process.stdin.isTTY);
+  const platform = deps.platform ?? process.platform;
+  if (deps.skipOffer)
+    return { status: "skipped-non-interactive" };
+  if (hasGithubToken(env))
+    return { status: "token-present" };
+  const installed = await isGhInstalled(deps);
+  if (installed)
+    return { status: "already-installed" };
+  error51(`
+GitHub CLI (gh) was not found on PATH.`);
+  error51("Without gh or GITHUB_TOKEN, API access is limited to 60 requests/hour.");
+  error51(`Install docs: ${GH_INSTALL_DOCS}`);
+  error51(`Or set GITHUB_TOKEN to a personal access token.
+`);
+  if (!isTTY) {
+    error51(`Non-interactive session: continuing without gh.
+`);
+    return { status: "skipped-non-interactive" };
+  }
+  const recipe = deps.resolveInstall?.(platform, env) ?? await resolveGhInstallCommand(platform, env, deps);
+  if (!recipe) {
+    error51("No supported package manager detected for automatic install.");
+    error51("Install gh manually, run `gh auth login`, then retry — or set GITHUB_TOKEN.\n");
+    return { status: "no-recipe" };
+  }
+  error51(`Detected install method: ${recipe.label}`);
+  error51(`  ${recipe.display}
+`);
+  const wantsInstall = await ask(`Install GitHub CLI (gh) now via ${recipe.label}? [y/N] `, {
+    isTTY: true
+  });
+  if (!wantsInstall) {
+    error51(`Skipping gh install. Continuing unauthenticated (or use GITHUB_TOKEN).
+`);
+    return { status: "skipped-by-user" };
+  }
+  error51(`
+Running: ${recipe.display}
+`);
+  const runInstall = deps.runInstall ?? defaultRunInstall;
+  const installResult = await runInstall(recipe);
+  if (!installResult.ok) {
+    const detail = installResult.error ?? (installResult.code != null ? `exit code ${installResult.code}` : "unknown error");
+    error51(`
+Failed to install gh (${detail}).`);
+    error51(`See ${GH_INSTALL_DOCS} or set GITHUB_TOKEN.
+`);
+    return { status: "install-failed", detail };
+  }
+  const nowInstalled = await isGhInstalled(deps);
+  if (!nowInstalled) {
+    error51("\ngh install finished, but `gh` is not on PATH in this session.");
+    error51("Open a new terminal (or re-auth your shell), then re-run getdotfiles.");
+    error51(`You can also set GITHUB_TOKEN instead.
+`);
+    return { status: "install-failed", detail: "gh not on PATH after install" };
+  }
+  error51(`
+gh installed successfully.`);
+  let authed = false;
+  const wantsLogin = await ask("Run `gh auth login` now? [y/N] ", { isTTY: true });
+  if (wantsLogin) {
+    const runAuth = deps.runAuthLogin ?? (() => defaultRunAuthLogin(deps));
+    const authResult = await runAuth();
+    authed = authResult.ok;
+    if (!authResult.ok) {
+      error51(`
+gh auth login did not complete${authResult.error ? ` (${authResult.error})` : ""}.`);
+      error51(`You can run it later, or set GITHUB_TOKEN.
+`);
+    } else {
+      error51(`
+GitHub CLI authenticated.
+`);
+    }
+  } else {
+    error51("Skipped auth login. Run `gh auth login` later or set GITHUB_TOKEN.\n");
+  }
+  return { status: "installed", authed };
 }
 
 // src/install.ts
@@ -14804,6 +15057,7 @@ async function main(argv, deps = {}) {
   const log = deps.log ?? console.log;
   const list = deps.listDotfiles ?? listDotfilesRepo;
   const ask = deps.confirm ?? confirm;
+  const ensureGh = deps.ensureGh ?? ensureGhAvailable;
   let opts;
   try {
     opts = parseArgs(argv);
@@ -14823,6 +15077,7 @@ Error: ${errorMessage(err)}`);
   }
   const username = opts.username;
   try {
+    await ensureGh(deps);
     const files = await list(username, opts.repo, deps);
     if (files.length === 0) {
       error51("No dotfiles found in this repo.");

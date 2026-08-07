@@ -14,10 +14,14 @@ function files(...paths: string[]): Dotfile[] {
 
 async function runMain(
   argv: readonly string[],
-  deps: Parameters<typeof main>[1],
+  deps: Parameters<typeof main>[1] = {},
 ): Promise<number> {
   try {
-    await main(argv, deps);
+    await main(argv, {
+      // Avoid probing the real host for gh during unit tests
+      ensureGh: async () => ({ status: "already-installed" }),
+      ...deps,
+    });
     return 0;
   } catch (err) {
     if (err instanceof ExitError) return err.code;
@@ -222,5 +226,23 @@ describe("main", () => {
     });
     expect(code).toBe(0);
     expect(seenRepo).toBe("my-configs");
+  });
+
+  test("invokes ensureGh before listing", async () => {
+    const io = captureIo();
+    const order: string[] = [];
+    const code = await runMain(["user", "--dry-run"], {
+      ...io,
+      ensureGh: async () => {
+        order.push("ensureGh");
+        return { status: "already-installed" };
+      },
+      listDotfiles: async () => {
+        order.push("list");
+        return files(".bashrc");
+      },
+    });
+    expect(code).toBe(0);
+    expect(order).toEqual(["ensureGh", "list"]);
   });
 });

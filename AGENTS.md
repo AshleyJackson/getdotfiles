@@ -6,7 +6,7 @@
 - **Language:** TypeScript only (no new plain JavaScript sources)
 - **Validation:** Zod for all external and boundary data
 - **Tests:** `bun:test` under `tests/`
-- **Ship artifact:** single-file Node-compatible bundle in `dist/` via `bun build`
+- **Ship artifact:** Node-compatible bundles + TypeScript declarations in `dist/` via `bun run build`
 
 ## Bun defaults
 
@@ -26,7 +26,10 @@
 - Model public shapes with Zod schemas in `src/schemas.ts`, then `z.infer<>` for types
 - Do not introduce `any` unless unavoidable at a true boundary; prefer `unknown` + Zod parse
 - CLI entry: `bin/getdotfiles.ts` → `src/main.ts`
+- Public library entry: `src/index.ts` → `dist/index.js` + `dist/index.d.ts`
 - Published binary is the bundled `dist/getdotfiles.js` (Node target) for `npx` users
+- Always emit types on build (`tsc -p tsconfig.build.json`); do not ship JS without `.d.ts`
+- `package.json` must keep `types` / `exports["."].types` pointing at `dist/index.d.ts`
 
 ## Zod (always)
 
@@ -51,16 +54,22 @@ Rules:
 
 ```
 bin/getdotfiles.ts      # CLI entry (bun)
+scripts/build.ts        # bundle JS + emit .d.ts
 src/
+  index.ts              # public API re-exports
   schemas.ts            # Zod schemas + inferred types
   cli.ts                # argv parsing, confirm prompt, USAGE
   paths.ts              # cross-platform path split/validate/display
   github.ts             # GitHub API + gh token resolution
+  gh-install.ts         # detect missing gh; offer platform install
   install.ts            # download + write under homedir
   main.ts               # orchestration
 tests/                  # bun:test suite (wide coverage)
 docs/                   # architecture + user guide
-dist/getdotfiles.js     # bundled publish artifact
+dist/
+  getdotfiles.js        # CLI bundle (npx)
+  index.js              # library entry
+  index.d.ts            # root types (+ per-module .d.ts)
 ```
 
 ## Cross-platform behavior
@@ -69,17 +78,18 @@ dist/getdotfiles.js     # bundled publish artifact
 - Preserve remote file bytes exactly (no LF↔CRLF conversion)
 - Windows invalid paths: best-effort **skip + warn**, continue other files
 - Windows `gh` auth: try `gh.cmd` / `gh.exe` / `gh` / shell fallback
-- Non-interactive stdin: do not hang on confirm; require `-y` or `--dry-run`
+- If `GITHUB_TOKEN` unset and `gh` missing: TTY offer to install via brew/winget/apt/etc., then optional `gh auth login`
+- Non-interactive stdin: do not hang on confirm or gh-install; require `-y` / `--dry-run` / pre-set token
 
 ## Commands
 
 ```bash
 bun install
 bun test
-bun run typecheck
-bun run build
+bun run typecheck      # tsc --noEmit (src + tests)
+bun run build          # CLI + lib JS bundles, then .d.ts emit
 bun run dev -- <username> --dry-run
-bun run check          # syntax-check dist bundle
+bun run check          # syntax-check dist JS bundles
 ```
 
 ## Testing

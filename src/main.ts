@@ -1,4 +1,5 @@
 import { confirm, parseArgs, USAGE } from "./cli.ts";
+import { ensureGhAvailable, type GhInstallDeps } from "./gh-install.ts";
 import { listDotfilesRepo, type GithubDeps } from "./github.ts";
 import { installFile, type InstallDeps } from "./install.ts";
 import { displayPath } from "./paths.ts";
@@ -22,7 +23,8 @@ export class ProcessExitError extends Error {
 }
 
 export type MainDeps = GithubDeps &
-  InstallDeps & {
+  InstallDeps &
+  GhInstallDeps & {
     listDotfiles?: (
       owner: string,
       repoName?: string,
@@ -40,6 +42,8 @@ export type MainDeps = GithubDeps &
     isTTY?: boolean;
     home?: string;
     platform?: Platform;
+    /** Injected ensureGhAvailable for tests. */
+    ensureGh?: typeof ensureGhAvailable;
   };
 
 function defaultExit(code: number): never {
@@ -121,6 +125,7 @@ export async function main(argv: readonly string[], deps: MainDeps = {}): Promis
   const log = deps.log ?? console.log;
   const list = deps.listDotfiles ?? listDotfilesRepo;
   const ask = deps.confirm ?? confirm;
+  const ensureGh = deps.ensureGh ?? ensureGhAvailable;
 
   let opts: CliOptions;
   try {
@@ -144,6 +149,10 @@ export async function main(argv: readonly string[], deps: MainDeps = {}): Promis
   const username = opts.username;
 
   try {
+    // Offer gh install when unauthenticated and CLI is missing (TTY).
+    // Dry-run still benefits from auth for listing private/rate-limited repos.
+    await ensureGh(deps);
+
     const files = await list(username, opts.repo, deps);
     if (files.length === 0) {
       error("No dotfiles found in this repo.");

@@ -4,7 +4,7 @@ Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home 
 
 Works on **macOS**, **Linux**, and **Windows** (Node.js 18+).
 
-Built with TypeScript + Zod; published as a single Node-compatible bundle for `npx`.
+Built with TypeScript + Zod; published as Node-compatible bundles **with declaration files** (`dist/*.d.ts`) for `npx` and programmatic imports.
 
 ```
 npx getdotfiles <username>
@@ -53,7 +53,8 @@ $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson -y
 | Invalid Windows paths | Best-effort: illegal names (e.g. `CON`, `foo:bar`) are **skipped with a warning**; other files still install |
 | Line endings | Preserved exactly from the repo (no LF↔CRLF conversion) |
 | Auth | `GITHUB_TOKEN`, or the GitHub CLI (`gh auth token`) when available |
-| Non-interactive | Without a TTY, confirmation is not prompted — use `-y` or `--dry-run` |
+| Missing `gh` | On a TTY, offers to install GitHub CLI via brew / winget / apt / etc., then optional `gh auth login` |
+| Non-interactive | Without a TTY, no install/write prompts — set `GITHUB_TOKEN`, or install `gh` yourself; use `-y` / `--dry-run` |
 
 ## Rate limits
 
@@ -68,6 +69,8 @@ $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson
 ```
 
 If the [GitHub CLI](https://cli.github.com/) is installed and logged in (`gh auth login`), its token is used automatically when `GITHUB_TOKEN` is unset.
+
+If `gh` is missing and no token is set, an interactive session will detect that and **offer to install** it (Homebrew, winget/Scoop/Chocolatey, apt/dnf/pacman/zypper when available), then optionally run `gh auth login`.
 
 ## Existing files
 
