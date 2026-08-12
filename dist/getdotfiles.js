@@ -15488,8 +15488,8 @@ GitHub CLI authenticated.
 }
 
 // src/install.ts
-import { access, mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { access, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join as join3 } from "node:path";
 
 // src/paths.ts
 import { homedir as homedir2 } from "node:os";
@@ -15598,6 +15598,7 @@ function displayPath(filePath, home = homedir2(), platform = process.platform) {
 }
 
 // src/install.ts
+var MAX_BACKUPS = 2;
 async function fileExists(path) {
   try {
     await access(path);
@@ -15606,9 +15607,30 @@ async function fileExists(path) {
     return false;
   }
 }
+async function pruneBackups(filePath, keep = MAX_BACKUPS) {
+  const dir = dirname(filePath);
+  const prefix = `${basename(filePath)}.backup.`;
+  let names;
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+  const backups = names.filter((name) => name.startsWith(prefix)).map((name) => {
+    const suffix = name.slice(prefix.length);
+    const ts = /^\d+$/.test(suffix) ? Number(suffix) : Number.NaN;
+    return { path: join3(dir, name), ts };
+  }).filter((backup) => Number.isFinite(backup.ts)).sort((a, b) => b.ts - a.ts);
+  await Promise.all(backups.slice(keep).map(async (backup) => {
+    try {
+      await unlink(backup.path);
+    } catch {}
+  }));
+}
 async function backupFile(filePath, now) {
   const backupPath = `${filePath}.backup.${now()}`;
   await rename(filePath, backupPath);
+  await pruneBackups(filePath);
   return backupPath;
 }
 async function downloadFile(url2, fetchImpl = fetch) {

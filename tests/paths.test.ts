@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   displayPath,
   isValidWindowsSegment,
@@ -118,12 +119,14 @@ describe("validateRepoPath", () => {
 });
 
 describe("resolveHomePath", () => {
-  test("joins under the provided home directory on posix", () => {
-    const r = resolveHomePath(".config/nvim/init.lua", "/home/user", "linux");
+  test("joins under the provided home directory", () => {
+    // path.join uses the host separator; platform only affects validation rules
+    const home = process.platform === "win32" ? "C:\\Users\\user" : "/home/user";
+    const r = resolveHomePath(".config/nvim/init.lua", home, process.platform === "win32" ? "win32" : "linux");
     expect(r).toEqual({
       ok: true,
       reason: null,
-      dest: "/home/user/.config/nvim/init.lua",
+      dest: join(home, ".config", "nvim", "init.lua"),
     });
   });
 
