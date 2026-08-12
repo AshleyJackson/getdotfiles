@@ -1,5 +1,5 @@
-import { access, mkdir, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { access, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { FetchFn } from "./github.ts";
 import { resolveHomePath } from "./paths.ts";
 import {
@@ -11,6 +11,9 @@ import {
   type InstallResult,
   type Platform,
 } from "./schemas.ts";
+
+/** Live file + this many timestamped backups (3 copies total). */
+export const MAX_BACKUPS = 2;
 
 export type InstallDeps = {
   fetch?: FetchFn;
@@ -26,9 +29,46 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * Keep only the newest `keep` `{file}.backup.{timestamp}` siblings.
+ * Older backups are removed best-effort so install is not blocked.
+ */
+export async function pruneBackups(filePath: string, keep: number = MAX_BACKUPS): Promise<void> {
+  const dir = dirname(filePath);
+  const prefix = `${basename(filePath)}.backup.`;
+
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return;
+  }
+
+  const backups = names
+    .filter((name) => name.startsWith(prefix))
+    .map((name) => {
+      const suffix = name.slice(prefix.length);
+      const ts = /^\d+$/.test(suffix) ? Number(suffix) : Number.NaN;
+      return { path: join(dir, name), ts };
+    })
+    .filter((backup) => Number.isFinite(backup.ts))
+    .sort((a, b) => b.ts - a.ts);
+
+  await Promise.all(
+    backups.slice(keep).map(async (backup) => {
+      try {
+        await unlink(backup.path);
+      } catch {
+        // best-effort: leave orphan backup rather than failing install
+      }
+    }),
+  );
+}
+
 async function backupFile(filePath: string, now: () => number): Promise<string> {
   const backupPath = `${filePath}.backup.${now()}`;
   await rename(filePath, backupPath);
+  await pruneBackups(filePath);
   return backupPath;
 }
 

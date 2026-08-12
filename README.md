@@ -80,7 +80,7 @@ If `gh` is missing and no token is set, an interactive session will detect that 
 
 ## Existing files
 
-If a target file already exists in your home directory, it's backed up with a `.backup.{timestamp}` suffix before being overwritten. Use `--force` to skip backup.
+If a target file already exists in your home directory, it's backed up with a `.backup.{timestamp}` suffix before being overwritten. Only the two newest backups are kept per file (live + 2 backups). Use `--force` to skip backup.
 
 ## License
 

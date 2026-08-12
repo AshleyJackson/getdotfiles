@@ -173,7 +173,7 @@ Options:
 Any file whose name starts with `.` (e.g. `.bashrc`, `.gitconfig`, `.config/nvim/init.lua` — the leaf name must start with `.`).
 
 **Q: What if a file already exists in my home directory?**
-It gets backed up to `{path}.backup.{timestamp}` before the new file is written. Use `--force` to skip backup.
+It gets backed up to `{path}.backup.{timestamp}` before the new file is written. Only the two newest backups are kept (live file + 2 backups). Use `--force` to skip backup.
 
 **Q: I hit a rate limit. What now?**
 Generate a token at https://github.com/settings/tokens and set `GITHUB_TOKEN=ghp_xxx`, or run `gh auth login`.

@@ -46,7 +46,13 @@ export {
   type GhInvocation,
   type GithubDeps,
 } from "./github.ts";
-export { downloadFile, installFile, type InstallDeps } from "./install.ts";
+export {
+  downloadFile,
+  installFile,
+  MAX_BACKUPS,
+  pruneBackups,
+  type InstallDeps,
+} from "./install.ts";
 export {
   installAll,
   main,

@@ -99,7 +99,7 @@ Windows notes:
 1. Zod-parse `Dotfile` + `InstallOptions`
 2. `resolveHomePath` — may return skipped on invalid Windows paths
 3. `mkdir(dirname(dest), { recursive: true })` — create **all** missing parents for nested paths
-4. Backup dest unless `--force`
+4. Backup dest unless `--force` (`{path}.backup.{timestamp}`), then prune to the **2 newest** backups (live + 2 backups = 3 copies max)
 5. Download **bytes** (`arrayBuffer` → `Buffer`) — no LF/CRLF conversion
 6. Write file; return Zod-validated `InstallResult`
 

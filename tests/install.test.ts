@@ -120,6 +120,69 @@ describe("installFile", () => {
     });
   });
 
+  test("keeps only two most recent backups per file", async () => {
+    await withTempDir(async (home) => {
+      const dest = join(home, ".gitconfig");
+      await writeFile(dest, "v0\n", "utf8");
+
+      const versions = [
+        [1, "v1\n"],
+        [2, "v2\n"],
+        [3, "v3\n"],
+        [4, "v4\n"],
+      ] as const;
+
+      for (const [ts, content] of versions) {
+        const result = await installFile(
+          makeDotfile({ path: ".gitconfig", name: ".gitconfig" }),
+          { home, force: false, platform: "linux" },
+          {
+            fetch: async () => textResponse(content),
+            now: () => ts,
+          },
+        );
+        expect(result.status).toBe("backed-up");
+      }
+
+      expect(await readFile(dest, "utf8")).toBe("v4\n");
+      expect(await exists(`${dest}.backup.1`)).toBe(false);
+      expect(await exists(`${dest}.backup.2`)).toBe(false);
+      expect(await exists(`${dest}.backup.3`)).toBe(true);
+      expect(await exists(`${dest}.backup.4`)).toBe(true);
+      expect(await readFile(`${dest}.backup.3`, "utf8")).toBe("v2\n");
+      expect(await readFile(`${dest}.backup.4`, "utf8")).toBe("v3\n");
+    });
+  });
+
+  test("prune ignores non-timestamp backup-like names", async () => {
+    await withTempDir(async (home) => {
+      const dest = join(home, ".zshrc");
+      await writeFile(dest, "live0\n", "utf8");
+      await writeFile(`${dest}.backup.keepme`, "manual\n", "utf8");
+      await writeFile(`${dest}.backup.10`, "old\n", "utf8");
+      await writeFile(`${dest}.backup.20`, "mid\n", "utf8");
+      await writeFile(`${dest}.backup.30`, "newish\n", "utf8");
+
+      const result = await installFile(
+        makeDotfile({ path: ".zshrc", name: ".zshrc" }),
+        { home, force: false, platform: "linux" },
+        {
+          fetch: async () => textResponse("live1\n"),
+          now: () => 40,
+        },
+      );
+
+      expect(result.status).toBe("backed-up");
+      // newest two numeric backups kept; non-numeric sibling left alone
+      expect(await exists(`${dest}.backup.10`)).toBe(false);
+      expect(await exists(`${dest}.backup.20`)).toBe(false);
+      expect(await exists(`${dest}.backup.30`)).toBe(true);
+      expect(await exists(`${dest}.backup.40`)).toBe(true);
+      expect(await exists(`${dest}.backup.keepme`)).toBe(true);
+      expect(await readFile(`${dest}.backup.keepme`, "utf8")).toBe("manual\n");
+    });
+  });
+
   test("overwrites without backup when force=true", async () => {
     await withTempDir(async (home) => {
       const dest = join(home, ".gitconfig");
