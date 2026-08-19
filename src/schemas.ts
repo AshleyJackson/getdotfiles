@@ -36,8 +36,8 @@ export const GitHubContentItemSchema = z.object({
   sha: z.string().optional(),
   size: z.number().optional(),
   url: z.string().url().optional(),
-  html_url: z.string().url().optional(),
-  git_url: z.string().url().optional(),
+  html_url: z.string().url().nullable().optional(),
+  git_url: z.string().url().nullable().optional(),
 });
 export type GitHubContentItem = z.infer<typeof GitHubContentItemSchema>;
 

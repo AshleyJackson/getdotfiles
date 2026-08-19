@@ -1,6 +1,6 @@
 {
   "name": "getdotfiles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fetch dotfiles from a GitHub user's dotfiles repo and install them to your home directory",
   "type": "module",
   "bin": {

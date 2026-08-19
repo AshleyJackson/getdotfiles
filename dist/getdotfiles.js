@@ -14316,8 +14316,8 @@ var GitHubContentItemSchema = exports_external.object({
   sha: exports_external.string().optional(),
   size: exports_external.number().optional(),
   url: exports_external.string().url().optional(),
-  html_url: exports_external.string().url().optional(),
-  git_url: exports_external.string().url().optional()
+  html_url: exports_external.string().url().nullable().optional(),
+  git_url: exports_external.string().url().nullable().optional()
 });
 var GitHubContentsResponseSchema = exports_external.union([
   exports_external.array(GitHubContentItemSchema),

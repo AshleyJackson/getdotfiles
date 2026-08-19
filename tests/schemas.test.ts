@@ -96,6 +96,8 @@ describe("GitHubContentsResponseSchema", () => {
         name: ".config",
         path: ".config",
         download_url: null,
+        html_url: null,
+        git_url: null,
       },
     ]);
     expect(Array.isArray(data)).toBe(true);
