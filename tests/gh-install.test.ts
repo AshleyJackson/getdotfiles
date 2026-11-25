@@ -313,6 +313,24 @@ describe("resolveGhInstallCommand", () => {
     expect(recipe?.command).toBe("bash");
   });
 
+  test("uses apk recipe on Alpine when apk exists", async () => {
+    const recipe = await resolveGhInstallCommand("linux", {}, {
+      execFile: async (cmd, args) => {
+        if (cmd === "which" && args[0] === "apk") {
+          return { stdout: "/sbin/apk\n", stderr: "" };
+        }
+        throw new Error("missing");
+      },
+    });
+    expect(recipe).toMatchObject({
+      label: "Alpine apk",
+      command: "apk",
+      args: ["add", "--no-cache", "github-cli"],
+      display: "apk add --no-cache github-cli",
+      kind: "apk",
+    });
+  });
+
   test("returns null on linux when no package manager found", async () => {
     const recipe = await resolveGhInstallCommand("linux", {}, {
       execFile: async () => {
@@ -838,6 +856,24 @@ describe("isGitInstalled / resolveGitInstallCommand", () => {
       },
     });
     expect(recipe?.display).toBe("brew install git");
+  });
+
+  test("resolveGitInstallCommand uses apk on Alpine", async () => {
+    const recipe = await resolveGitInstallCommand("linux", {}, {
+      execFile: async (cmd, args) => {
+        if (cmd === "which" && args[0] === "apk") {
+          return { stdout: "/sbin/apk\n", stderr: "" };
+        }
+        throw new Error("missing");
+      },
+    });
+    expect(recipe).toMatchObject({
+      label: "Alpine apk · Git",
+      command: "apk",
+      args: ["add", "--no-cache", "git"],
+      display: "apk add --no-cache git",
+      kind: "apk",
+    });
   });
 
   test("resolveGitInstallCommand uses winget Git.Git on windows", async () => {

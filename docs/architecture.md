@@ -82,7 +82,7 @@ Called from `main()` before listing when useful:
 5. Non-TTY → continue without install
 6. TTY → resolve package manager recipe → confirm → run install → optional `gh auth login`
 
-Recipes: brew (macOS/Linux), winget/scoop/choco (Windows), apt (official GitHub CLI repo), dnf, pacman, zypper. Git uses the same managers (`Git.Git` on winget).
+Recipes: brew (macOS/Linux), apk (Alpine), apt (official GitHub CLI repo), dnf, pacman, zypper, and winget/scoop/choco (Windows). Alpine installs Git with `apk add --no-cache git` and GitHub CLI with `apk add --no-cache github-cli`. Git uses the same managers (`Git.Git` on winget).
 
 Windows notes:
 

@@ -54,7 +54,17 @@ export type GhInstallCommand = {
    */
   optimistic?: boolean;
   /** Machine-readable kind for fallbacks / tests */
-  kind?: "winget" | "scoop" | "choco" | "powershell-irm" | "brew" | "apt" | "dnf" | "pacman" | "zypper";
+  kind?:
+    | "winget"
+    | "scoop"
+    | "choco"
+    | "powershell-irm"
+    | "brew"
+    | "apk"
+    | "apt"
+    | "dnf"
+    | "pacman"
+    | "zypper";
 };
 
 export type GhInstallDeps = GithubDeps & {
@@ -680,6 +690,15 @@ export async function resolveGitInstallCommand(
       kind: "brew",
     };
   }
+  if (await unixHasTool(run, "apk")) {
+    return {
+      label: "Alpine apk · Git",
+      command: "apk",
+      args: ["add", "--no-cache", "git"],
+      display: "apk add --no-cache git",
+      kind: "apk",
+    };
+  }
   if (await unixHasTool(run, "apt-get")) {
     return {
       label: "apt · Git",
@@ -782,6 +801,15 @@ export async function resolveGhInstallCommand(
       args: ["install", "gh"],
       display: "brew install gh",
       kind: "brew",
+    };
+  }
+  if (await unixHasTool(run, "apk")) {
+    return {
+      label: "Alpine apk",
+      command: "apk",
+      args: ["add", "--no-cache", "github-cli"],
+      display: "apk add --no-cache github-cli",
+      kind: "apk",
     };
   }
   if (await unixHasTool(run, "apt-get")) {

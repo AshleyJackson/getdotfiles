@@ -59,7 +59,7 @@ You do **not** need Bun, Git, or the GitHub CLI to start. If `gh` is missing, an
 | Invalid Windows paths | Best-effort: illegal names (e.g. `CON`, `foo:bar`) are **skipped with a warning**; other files still install |
 | Line endings | Preserved exactly from the repo (no LF↔CRLF conversion) |
 | Auth | `GITHUB_TOKEN`, or the GitHub CLI (`gh auth token`) when available |
-| Missing Git / `gh` | On a TTY, installs **Git first** if needed, then offers GitHub CLI (brew / winget / apt / …; Windows also **PowerShell `irm` latest MSI** with UAC — version always dynamic), then optional `gh auth login` |
+| Missing Git / `gh` | On a TTY, installs **Git first** if needed, then offers GitHub CLI (brew / winget / apk / apt / …; Alpine uses `apk add --no-cache`), then optional `gh auth login` |
 | Non-interactive | Without a TTY, no install/write prompts — set `GITHUB_TOKEN`, or install `gh` yourself; use `-y` / `--dry-run` |
 
 ## Rate limits
@@ -76,7 +76,7 @@ $env:GITHUB_TOKEN="ghp_xxx"; npx getdotfiles ashleyjackson
 
 If the [GitHub CLI](https://cli.github.com/) is installed and logged in (`gh auth login`), its token is used automatically when `GITHUB_TOKEN` is unset.
 
-If `gh` is missing and no token is set, an interactive session will detect that and **offer to install** it (Homebrew, winget/Scoop/Chocolatey, apt/dnf/pacman/zypper when available), then optionally run `gh auth login`.
+If `gh` is missing and no token is set, an interactive session will detect that and **offer to install** it (Homebrew, winget/Scoop/Chocolatey, apk, apt/dnf/pacman/zypper when available), then optionally run `gh auth login`.
 
 ## Existing files
 

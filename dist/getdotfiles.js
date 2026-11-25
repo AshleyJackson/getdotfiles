@@ -15062,6 +15062,15 @@ async function resolveGitInstallCommand(platform = process.platform, env = proce
       kind: "brew"
     };
   }
+  if (await unixHasTool(run, "apk")) {
+    return {
+      label: "Alpine apk · Git",
+      command: "apk",
+      args: ["add", "--no-cache", "git"],
+      display: "apk add --no-cache git",
+      kind: "apk"
+    };
+  }
   if (await unixHasTool(run, "apt-get")) {
     return {
       label: "apt · Git",
@@ -15147,6 +15156,15 @@ async function resolveGhInstallCommand(platform = process.platform, env = proces
       args: ["install", "gh"],
       display: "brew install gh",
       kind: "brew"
+    };
+  }
+  if (await unixHasTool(run, "apk")) {
+    return {
+      label: "Alpine apk",
+      command: "apk",
+      args: ["add", "--no-cache", "github-cli"],
+      display: "apk add --no-cache github-cli",
+      kind: "apk"
     };
   }
   if (await unixHasTool(run, "apt-get")) {

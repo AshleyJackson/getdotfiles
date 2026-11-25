@@ -119,7 +119,7 @@ Supported auto-install backends (first match wins):
 |----------|-----|-------------------|
 | macOS | Homebrew / Xcode CLT | Homebrew (`brew install gh`) |
 | Windows | winget (`Git.Git`) → Scoop → Chocolatey | winget → Scoop → Chocolatey → **PowerShell `irm` latest MSI** |
-| Linux | brew / apt / dnf / pacman / zypper | Homebrew → official apt repo → dnf → pacman → zypper |
+| Linux | brew / apk / apt / dnf / pacman / zypper | Homebrew → Alpine `apk add --no-cache github-cli` → official apt repo → dnf → pacman → zypper |
 
 On Windows:
 
